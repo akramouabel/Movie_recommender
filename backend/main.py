@@ -15,9 +15,16 @@ import pickle
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
+import gc
 
 # --- Logging Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 
 # --- Flask Application Initialization ---
 app = Flask(__name__)
@@ -56,6 +63,10 @@ def load_data():
             if isinstance(similarity_matrix, np.ndarray):
                 from scipy import sparse
                 similarity_matrix = sparse.csr_matrix(similarity_matrix)
+        
+        # Clear memory
+        del data
+        gc.collect()
         
         logging.info("Data loaded successfully")
         return True
@@ -293,9 +304,5 @@ for rule in app.url_map.iter_rules():
 logging.info("---------------------------------------")
 
 if __name__ == '__main__':
-    # Initial data load for recommender system when Flask app starts
-    if not recommender.load_recommendation_data():
-        logging.critical("CRITICAL ERROR: Failed to load recommendation data. Exiting Flask app.")
-        exit(1) # Exit if data loading fails, as the app cannot function without it
-    port = int(os.environ.get('PORT', 5000))  # Use Render's port if set, else 5000
-    app.run(host='0.0.0.0', port=port, debug=True)
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
