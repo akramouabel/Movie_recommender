@@ -11,6 +11,10 @@ import pandas as pd
 import json # Explicitly import json for parsing genres
 from backend import recommender # Your recommender module
 from flask_cors import CORS
+import pickle
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from dotenv import load_dotenv
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,6 +22,49 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- Flask Application Initialization ---
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
+
+# Global variables for data
+movie_data = None
+similarity_matrix = None
+
+def load_data():
+    """Load data with memory optimization"""
+    global movie_data, similarity_matrix
+    
+    try:
+        data_path = os.getenv('DATA_PATH', 'data/movie_data_api.pkl')
+        logging.info(f"Attempting to load recommendation data from: {data_path}")
+        
+        # Load data in chunks if it's a large file
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+            
+        # Extract only necessary columns to reduce memory usage
+        movie_data = pd.DataFrame({
+            'id': data['id'],
+            'title': data['title'],
+            'overview': data['overview'],
+            'poster_path': data['poster_path'],
+            'release_date': data['release_date'],
+            'vote_average': data['vote_average'],
+            'genres': data['genres']
+        })
+        
+        # Convert similarity matrix to sparse format if it exists
+        if 'similarity_matrix' in data:
+            similarity_matrix = data['similarity_matrix']
+            if isinstance(similarity_matrix, np.ndarray):
+                from scipy import sparse
+                similarity_matrix = sparse.csr_matrix(similarity_matrix)
+        
+        logging.info("Data loaded successfully")
+        return True
+    except Exception as e:
+        logging.error(f"Error loading data: {str(e)}")
+        return False
+
+# Load data when the application starts
+load_data()
 
 # --- API Routes ---
 
@@ -27,7 +74,7 @@ def home():
     Root endpoint to confirm the backend is running.
     Returns a simple status message.
     """
-    return "Movie Recommendation Backend is running!"
+    return jsonify({"message": "Movie Recommendation API is running!"})
 
 @app.route('/recommend', methods=['GET'])
 def recommend_movie():
@@ -132,6 +179,112 @@ def years():
     unique_years = sorted(list(set(years_list)))
     logging.info(f"Fetched {len(unique_years)} unique years.")
     return jsonify({"years": unique_years})
+
+@app.route('/api/movies', methods=['GET'])
+def get_movies():
+    try:
+        if movie_data is None:
+            return jsonify({"error": "Movie data not loaded"}), 500
+            
+        # Get pagination parameters
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        
+        # Calculate start and end indices
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        # Get paginated data
+        paginated_data = movie_data.iloc[start_idx:end_idx]
+        
+        # Convert to list of dictionaries
+        movies = paginated_data.to_dict('records')
+        
+        # Add total count for pagination
+        total_movies = len(movie_data)
+        
+        return jsonify({
+            "movies": movies,
+            "total": total_movies,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total_movies + per_page - 1) // per_page
+        })
+    except Exception as e:
+        logging.error(f"Error in get_movies: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/movies/<int:movie_id>', methods=['GET'])
+def get_movie(movie_id):
+    try:
+        if movie_data is None:
+            return jsonify({"error": "Movie data not loaded"}), 500
+            
+        movie = movie_data[movie_data['id'] == movie_id]
+        if movie.empty:
+            return jsonify({"error": "Movie not found"}), 404
+            
+        return jsonify(movie.iloc[0].to_dict())
+    except Exception as e:
+        logging.error(f"Error in get_movie: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/recommendations/<int:movie_id>', methods=['GET'])
+def get_recommendations(movie_id):
+    try:
+        if movie_data is None or similarity_matrix is None:
+            return jsonify({"error": "Data not loaded"}), 500
+            
+        # Get the index of the movie
+        movie_idx = movie_data[movie_data['id'] == movie_id].index
+        if len(movie_idx) == 0:
+            return jsonify({"error": "Movie not found"}), 404
+            
+        movie_idx = movie_idx[0]
+        
+        # Get similarity scores
+        if isinstance(similarity_matrix, np.ndarray):
+            sim_scores = list(enumerate(similarity_matrix[movie_idx]))
+        else:
+            sim_scores = list(enumerate(similarity_matrix[movie_idx].toarray()[0]))
+            
+        # Sort by similarity score
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+        
+        # Get top 10 similar movies (excluding the input movie)
+        sim_scores = sim_scores[1:11]
+        
+        # Get movie indices
+        movie_indices = [i[0] for i in sim_scores]
+        
+        # Get movie details
+        recommendations = movie_data.iloc[movie_indices].to_dict('records')
+        
+        return jsonify(recommendations)
+    except Exception as e:
+        logging.error(f"Error in get_recommendations: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/search', methods=['GET'])
+def search_movies():
+    try:
+        if movie_data is None:
+            return jsonify({"error": "Movie data not loaded"}), 500
+            
+        query = request.args.get('query', '').lower()
+        if not query:
+            return jsonify({"error": "Search query is required"}), 400
+            
+        # Search in title and overview
+        results = movie_data[
+            movie_data['title'].str.lower().str.contains(query) |
+            movie_data['overview'].str.lower().str.contains(query)
+        ]
+        
+        return jsonify(results.to_dict('records'))
+    except Exception as e:
+        logging.error(f"Error in search_movies: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # --- Log all registered routes for debugging and documentation ---
 logging.info("--- Flask URL Map (Registered Routes) ---")
