@@ -144,4 +144,5 @@ if __name__ == '__main__':
     if not recommender.load_recommendation_data():
         logging.critical("CRITICAL ERROR: Failed to load recommendation data. Exiting Flask app.")
         exit(1) # Exit if data loading fails, as the app cannot function without it
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5000))  # Use Render's port if set, else 5000
+    app.run(host='0.0.0.0', port=port, debug=True)
