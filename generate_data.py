@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Your TMDB API key. This is sensitive information and in a production environment,
 # it should ideally be loaded from environment variables (e.g., os.getenv('TMDB_API_KEY'))
 # instead of being hardcoded directly in the script for security and flexibility.
-TMDB_API_KEY = '6847167bf6865c1f542dc0df6598ce8c'
+TMDB_API_KEY = os.environ.get('TMDB_API_KEY')
 TMDB_BASE_URL = 'https://api.themoviedb.org/3' # Base URL for TMDB API v3 endpoints
 
 # --- Project Directory Configuration ---
