@@ -79,13 +79,20 @@ def load_or_generate_embeddings():
     if movie_embeddings is not None:
         return movie_embeddings
     if os.path.exists(EMBEDDINGS_FILE_PATH):
-        movie_embeddings = np.load(EMBEDDINGS_FILE_PATH)
-        return movie_embeddings
-    # Generate embeddings using SentenceTransformer
+        try:
+            movie_embeddings = np.load(EMBEDDINGS_FILE_PATH)
+            return movie_embeddings
+        except Exception as e:
+            logging.warning(f"Could not load embeddings file: {e}")
+    
+    # Generate embeddings if file doesn't exist or loading failed
     embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     texts = (movies_df['title'] + ' ' + movies_df['overview']).tolist()
     movie_embeddings = embedding_model.encode(texts, show_progress_bar=True)
-    np.save(EMBEDDINGS_FILE_PATH, movie_embeddings)
+    try:
+        np.save(EMBEDDINGS_FILE_PATH, movie_embeddings)
+    except Exception as e:
+        logging.warning(f"Could not save embeddings file: {e}")
     return movie_embeddings
 
 def load_or_generate_clusters(n_clusters=20):
@@ -97,13 +104,25 @@ def load_or_generate_clusters(n_clusters=20):
     if movie_clusters is not None:
         return movie_clusters
     if os.path.exists(CLUSTERS_FILE_PATH):
-        movie_clusters = np.load(CLUSTERS_FILE_PATH)
+        try:
+            movie_clusters = np.load(CLUSTERS_FILE_PATH)
+            return movie_clusters
+        except Exception as e:
+            logging.warning(f"Could not load clusters file: {e}")
+    
+    # Generate clusters if file doesn't exist or loading failed
+    try:
+        embeddings = load_or_generate_embeddings()
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        movie_clusters = kmeans.fit_predict(embeddings)
+        try:
+            np.save(CLUSTERS_FILE_PATH, movie_clusters)
+        except Exception as e:
+            logging.warning(f"Could not save clusters file: {e}")
         return movie_clusters
-    embeddings = load_or_generate_embeddings()
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    movie_clusters = kmeans.fit_predict(embeddings)
-    np.save(CLUSTERS_FILE_PATH, movie_clusters)
-    return movie_clusters
+    except Exception as e:
+        logging.warning(f"Could not generate clusters: {e}")
+        return None
 
 # --- Data Loading ---
 def load_recommendation_data():
