@@ -1,1 +1,2 @@
+release: python generate_data.py
 web: gunicorn --worker-class=sync --workers=1 --threads=1 --timeout=120 --bind=0.0.0.0:$PORT --log-level=info --max-requests=1000 --max-requests-jitter=50 --worker-tmp-dir=/dev/shm "backend.main:app" 
