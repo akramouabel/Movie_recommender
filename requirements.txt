@@ -60,3 +60,5 @@ watchdog==6.0.0
 wheel==0.45.1
 sentence-transformers==2.6.1
 gunicorn
+flask-cors
+python-dotenv
