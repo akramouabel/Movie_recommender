@@ -17,14 +17,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 import gc
 
-# --- Logging Configuration ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
 
 # --- Flask Application Initialization ---
 app = Flask(__name__)
@@ -40,7 +38,7 @@ def load_data():
     
     try:
         data_path = os.getenv('DATA_PATH', 'data/movie_data_api.pkl')
-        logging.info(f"Attempting to load recommendation data from: {data_path}")
+        logger.info(f"Attempting to load recommendation data from: {data_path}")
         
         # Load data in chunks if it's a large file
         with open(data_path, 'rb') as f:
@@ -68,10 +66,10 @@ def load_data():
         del data
         gc.collect()
         
-        logging.info("Data loaded successfully")
+        logger.info("Data loaded successfully")
         return True
     except Exception as e:
-        logging.error(f"Error loading data: {str(e)}")
+        logger.error(f"Error loading data: {str(e)}")
         return False
 
 # Load data when the application starts
@@ -110,16 +108,16 @@ def recommend_movie():
             if isinstance(temp_genres, list):
                 selected_genres_list = [g.strip().replace(" ", "") for g in temp_genres if isinstance(g, str) and g.strip()]
             else:
-                logging.warning(f"Expected list for genres after JSON decode but got {type(temp_genres)}: {temp_genres}")
+                logger.warning(f"Expected list for genres after JSON decode but got {type(temp_genres)}: {temp_genres}")
                 # Fallback in case of unexpected format
                 selected_genres_list = [g.strip().replace(" ", "") for g in selected_genres_raw_str.split(',') if g.strip()]
         except json.JSONDecodeError:
-            logging.error(f"Failed to decode genres JSON: {selected_genres_raw_str}. Treating as no genres selected.")
+            logger.error(f"Failed to decode genres JSON: {selected_genres_raw_str}. Treating as no genres selected.")
             selected_genres_list = [] # Treat as no genres selected if JSON parsing fails
         except Exception as e:
-            logging.error(f"Unexpected error processing genres: {e}")
+            logger.error(f"Unexpected error processing genres: {e}")
             selected_genres_list = [] # Fallback for other errors
-    logging.info(f"Recommendation request for title: '{movie_title}', min_year: {min_year}, max_year: {max_year}, genres: {selected_genres_list}")
+    logger.info(f"Recommendation request for title: '{movie_title}', min_year: {min_year}, max_year: {max_year}, genres: {selected_genres_list}")
 
     if not movie_title:
         return jsonify({"error": "Movie title parameter 'title' is required."}), 400
@@ -134,13 +132,13 @@ def recommend_movie():
     )
 
     if recommendations is None:
-        logging.error(f"Recommender returned None for '{movie_title}': {matched_title}")
+        logger.error(f"Recommender returned None for '{movie_title}': {matched_title}")
         return jsonify({"error": matched_title}), 500
     elif not recommendations:
-        logging.info(f"No recommendations found for '{movie_title}' with applied filters. Message: {matched_title}")
+        logger.info(f"No recommendations found for '{movie_title}' with applied filters. Message: {matched_title}")
         return jsonify({"recommendations": [], "message": matched_title}), 200
     else:
-        logging.info(f"Successfully retrieved {len(recommendations)} recommendations for '{movie_title}'.")
+        logger.info(f"Successfully retrieved {len(recommendations)} recommendations for '{movie_title}'.")
         return jsonify({"recommendations": recommendations, "matched_title": matched_title}), 200
 
 @app.route('/suggest', methods=['GET'])
@@ -153,7 +151,7 @@ def suggest_movie():
     if not query:
         return jsonify({"suggestions": []}), 200
     suggestions = recommender.get_title_suggestions(query)
-    logging.info(f"Suggestions for '{query}': {suggestions}")
+    logger.info(f"Suggestions for '{query}': {suggestions}")
     return jsonify({"suggestions": suggestions}), 200
 
 @app.route('/genres', methods=['GET'])
@@ -163,14 +161,14 @@ def genres():
     Used to populate filter options in the frontend.
     """
     if recommender.movies_df is None:
-        logging.error("movies_df not loaded in recommender module when /genres was requested. Data pre-loading failed.")
+        logger.error("movies_df not loaded in recommender module when /genres was requested. Data pre-loading failed.")
         return jsonify({"error": "Movie data not loaded on backend. Please ensure data generation script was run."}), 500
     all_genres = []
     for movie_genres in recommender.movies_df['genres'].dropna():
         if isinstance(movie_genres, list):
             all_genres.extend(movie_genres)
     unique_genres = sorted(list(set(all_genres)))
-    logging.info(f"Fetched {len(unique_genres)} unique genres.")
+    logger.info(f"Fetched {len(unique_genres)} unique genres.")
     return jsonify({"genres": unique_genres})
 
 @app.route('/years', methods=['GET'])
@@ -180,7 +178,7 @@ def years():
     Used to populate filter options in the frontend.
     """
     if recommender.movies_df is None:
-        logging.error("movies_df not loaded in recommender module when /years was requested. Data pre-loading failed.")
+        logger.error("movies_df not loaded in recommender module when /years was requested. Data pre-loading failed.")
         return jsonify({"error": "Movie data not loaded on backend. Please ensure data generation script was run."}), 500
     years_list = []
     for date_str in recommender.movies_df['release_date'].dropna():
@@ -188,7 +186,7 @@ def years():
         if pd.notna(converted_date): 
             years_list.append(converted_date.year)
     unique_years = sorted(list(set(years_list)))
-    logging.info(f"Fetched {len(unique_years)} unique years.")
+    logger.info(f"Fetched {len(unique_years)} unique years.")
     return jsonify({"years": unique_years})
 
 @app.route('/api/movies', methods=['GET'])
@@ -222,7 +220,7 @@ def get_movies():
             "total_pages": (total_movies + per_page - 1) // per_page
         })
     except Exception as e:
-        logging.error(f"Error in get_movies: {str(e)}")
+        logger.error(f"Error in get_movies: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/movies/<int:movie_id>', methods=['GET'])
@@ -237,7 +235,7 @@ def get_movie(movie_id):
             
         return jsonify(movie.iloc[0].to_dict())
     except Exception as e:
-        logging.error(f"Error in get_movie: {str(e)}")
+        logger.error(f"Error in get_movie: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/recommendations/<int:movie_id>', methods=['GET'])
@@ -273,7 +271,7 @@ def get_recommendations(movie_id):
         
         return jsonify(recommendations)
     except Exception as e:
-        logging.error(f"Error in get_recommendations: {str(e)}")
+        logger.error(f"Error in get_recommendations: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/search', methods=['GET'])
@@ -294,14 +292,14 @@ def search_movies():
         
         return jsonify(results.to_dict('records'))
     except Exception as e:
-        logging.error(f"Error in search_movies: {str(e)}")
+        logger.error(f"Error in search_movies: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # --- Log all registered routes for debugging and documentation ---
-logging.info("--- Flask URL Map (Registered Routes) ---")
+logger.info("--- Flask URL Map (Registered Routes) ---")
 for rule in app.url_map.iter_rules():
-    logging.info(f"Rule: {rule.endpoint} | Path: {rule.rule} | Methods: {rule.methods}")
-logging.info("---------------------------------------")
+    logger.info(f"Rule: {rule.endpoint} | Path: {rule.rule} | Methods: {rule.methods}")
+logger.info("---------------------------------------")
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
