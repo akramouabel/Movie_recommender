@@ -8,21 +8,17 @@ from flask import Flask, request, jsonify
 import os
 import logging
 import pandas as pd
-import json # Explicitly import json for parsing genres
-from backend import recommender # Your recommender module
+import json
+from backend import recommender
 from flask_cors import CORS
 import pickle
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from dotenv import load_dotenv
 import gc
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 # --- Flask Application Initialization ---
 app = Flask(__name__)
@@ -37,7 +33,7 @@ def load_data():
     global movie_data, similarity_matrix
     
     try:
-        data_path = os.getenv('DATA_PATH', 'data/movie_data_api.pkl')
+        data_path = 'data/movie_data_api.pkl'  # Hardcoded path
         logger.info(f"Attempting to load recommendation data from: {data_path}")
         
         # Load data in chunks if it's a large file
@@ -96,39 +92,34 @@ def recommend_movie():
     top_n = request.args.get('top_n', 10, type=int)
     min_year = request.args.get('min_year', type=int)
     max_year = request.args.get('max_year', type=int)
-    # Get the genres parameter as a raw string from the request (it's JSON-dumped by frontend)
     selected_genres_raw_str = request.args.get('genres') 
 
-    selected_genres_list = [] # Initialize as an empty list
+    selected_genres_list = []
     if selected_genres_raw_str:
         try:
-            # Attempt to parse the JSON string into a Python list
             temp_genres = json.loads(selected_genres_raw_str)
-            # Ensure the result is a list and then clean its contents
             if isinstance(temp_genres, list):
                 selected_genres_list = [g.strip().replace(" ", "") for g in temp_genres if isinstance(g, str) and g.strip()]
             else:
                 logger.warning(f"Expected list for genres after JSON decode but got {type(temp_genres)}: {temp_genres}")
-                # Fallback in case of unexpected format
                 selected_genres_list = [g.strip().replace(" ", "") for g in selected_genres_raw_str.split(',') if g.strip()]
         except json.JSONDecodeError:
             logger.error(f"Failed to decode genres JSON: {selected_genres_raw_str}. Treating as no genres selected.")
-            selected_genres_list = [] # Treat as no genres selected if JSON parsing fails
+            selected_genres_list = []
         except Exception as e:
             logger.error(f"Unexpected error processing genres: {e}")
-            selected_genres_list = [] # Fallback for other errors
+            selected_genres_list = []
     logger.info(f"Recommendation request for title: '{movie_title}', min_year: {min_year}, max_year: {max_year}, genres: {selected_genres_list}")
 
     if not movie_title:
         return jsonify({"error": "Movie title parameter 'title' is required."}), 400
 
-    # Pass the already parsed Python list directly to recommender.get_recommendations
     recommendations, matched_title = recommender.get_recommendations(
         movie_title=movie_title,
         num_recommendations=top_n,
         min_year=min_year,
         max_year=max_year,
-        selected_genres=selected_genres_list # This is now a Python list
+        selected_genres=selected_genres_list
     )
 
     if recommendations is None:
@@ -249,27 +240,16 @@ def get_recommendations(movie_id):
         if len(movie_idx) == 0:
             return jsonify({"error": "Movie not found"}), 404
             
-        movie_idx = movie_idx[0]
+        # Get similarity scores for the movie
+        movie_similarities = similarity_matrix[movie_idx[0]].toarray()[0]
         
-        # Get similarity scores
-        if isinstance(similarity_matrix, np.ndarray):
-            sim_scores = list(enumerate(similarity_matrix[movie_idx]))
-        else:
-            sim_scores = list(enumerate(similarity_matrix[movie_idx].toarray()[0]))
-            
-        # Sort by similarity score
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+        # Get indices of top similar movies
+        similar_indices = np.argsort(movie_similarities)[::-1][1:11]  # Top 10 similar movies
         
-        # Get top 10 similar movies (excluding the input movie)
-        sim_scores = sim_scores[1:11]
+        # Get the similar movies data
+        similar_movies = movie_data.iloc[similar_indices].to_dict('records')
         
-        # Get movie indices
-        movie_indices = [i[0] for i in sim_scores]
-        
-        # Get movie details
-        recommendations = movie_data.iloc[movie_indices].to_dict('records')
-        
-        return jsonify(recommendations)
+        return jsonify({"recommendations": similar_movies})
     except Exception as e:
         logger.error(f"Error in get_recommendations: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -282,15 +262,15 @@ def search_movies():
             
         query = request.args.get('query', '').lower()
         if not query:
-            return jsonify({"error": "Search query is required"}), 400
+            return jsonify({"movies": []}), 200
             
-        # Search in title and overview
-        results = movie_data[
-            movie_data['title'].str.lower().str.contains(query) |
-            movie_data['overview'].str.lower().str.contains(query)
-        ]
+        # Search in titles
+        results = movie_data[movie_data['title'].str.lower().str.contains(query)]
         
-        return jsonify(results.to_dict('records'))
+        # Convert to list of dictionaries
+        movies = results.to_dict('records')
+        
+        return jsonify({"movies": movies})
     except Exception as e:
         logger.error(f"Error in search_movies: {str(e)}")
         return jsonify({"error": str(e)}), 500

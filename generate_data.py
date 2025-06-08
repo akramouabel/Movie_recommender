@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Your TMDB API key. This is sensitive information and in a production environment,
 # it should ideally be loaded from environment variables (e.g., os.getenv('TMDB_API_KEY'))
 # instead of being hardcoded directly in the script for security and flexibility.
-TMDB_API_KEY = os.environ.get('TMDB_API_KEY')
+TMDB_API_KEY = 'your_tmdb_api_key_here'  # Replace with your actual API key
 TMDB_BASE_URL = 'https://api.themoviedb.org/3' # Base URL for TMDB API v3 endpoints
 
 # --- Project Directory Configuration ---
@@ -190,8 +190,8 @@ if __name__ == "__main__":
     logging.info(f"Attempting to fetch comprehensive data for {total_movies} movies from TMDB API.")
 
     # API key validation before starting expensive API calls.
-    if TMDB_API_KEY == 'YOUR_TMDB_API_KEY_HERE' or not TMDB_API_KEY:
-        logging.critical("ERROR: TMDB_API_KEY is not set or is the placeholder. Please update it in generate_data.py.")
+    if TMDB_API_KEY == 'your_tmdb_api_key_here':
+        logging.critical("ERROR: Please replace 'your_tmdb_api_key_here' with your actual TMDB API key in generate_data.py")
         exit(1)
 
     # Iterate through each movie ID and fetch data from TMDB API.
@@ -283,3 +283,5 @@ if __name__ == "__main__":
     except Exception as e:
         logging.critical(f"ERROR: Could not save PKL file to {OUTPUT_PKL_FILE}: {e}")
         exit(1) # Exit with an error code if saving fails
+
+    logging.info("Data generation completed successfully!")
