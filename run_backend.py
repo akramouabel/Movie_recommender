@@ -56,7 +56,8 @@ if __name__ == '__main__':
     #                  or from a deployed environment.
     # '--port 5001': Specifies the port on which the Flask server will listen.
     #                Ensures consistency with the frontend's API calls.
-    flask_cmd = [sys.executable, '-m', 'flask', 'run', '--host', '0.0.0.0', '--port', '5001']
+    port = os.environ.get('PORT', '5001') # Use PORT environment variable or default to 5001
+    flask_cmd = [sys.executable, '-m', 'flask', 'run', '--host', '0.0.0.0', '--port', port]
 
     logging.info(f"Executing Flask command: {' '.join(flask_cmd)}")
 
