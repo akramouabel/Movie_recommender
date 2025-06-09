@@ -3,7 +3,7 @@ import os
 import logging
 import pandas as pd
 import json
-from backend.recommender import get_recommendations, get_title_suggestions, get_genres, get_years, load_recommendation_data, movies_df, cosine_sim # Import necessary functions and data
+from backend.recommender import get_recommendations, get_title_suggestions, load_recommendation_data, movies_df, cosine_sim # Corrected imports
 from flask_cors import CORS
 import pickle
 import numpy as np
