@@ -109,7 +109,7 @@ def main():
     
     # Fetch movies from first 3 pages only to reduce time
     all_movies = []
-    for page in range(1, 241): # Increased to fetch 240 pages for approximately 4800 movies
+    for page in range(1, 101): # Reverting to 100 pages for ~2000 movies to fit within Render's free tier resources
         logging.info(f"Fetching page {page}")
         movies = fetch_movies(page)
         if not movies:
