@@ -9,7 +9,7 @@ import os
 import logging
 import pandas as pd
 import json
-from backend import recommender
+from . import recommender
 from flask_cors import CORS
 import pickle
 import numpy as np

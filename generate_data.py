@@ -46,6 +46,12 @@ except Exception as e:
     logging.error(f"Failed to create data directory: {e}")
     sys.exit(1)
 
+# Check for Render deployment path
+RENDER_DATA_DIR = '/opt/render/project/src/data'
+if os.path.exists(RENDER_DATA_DIR):
+    PROCESSED_DATA_DIR = RENDER_DATA_DIR
+    logging.info(f"Using Render deployment data directory: {PROCESSED_DATA_DIR}")
+
 OUTPUT_PKL_FILE = os.path.join(PROCESSED_DATA_DIR, 'movie_data_api.pkl')
 logging.info(f"Will save data to: {OUTPUT_PKL_FILE}")
 
