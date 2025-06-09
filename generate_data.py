@@ -121,71 +121,50 @@ def get_top_n_cast(cast_list_of_dicts, n=3):
                 break
     return cast_names
 
-def fetch_movie_data_from_api(movie_id, api_key):
-    """
-    Fetches comprehensive movie data from the TMDB API for a given movie ID,
-    including main details and credits (cast/crew).
-
-    Args:
-        movie_id (int): The TMDB ID of the movie.
-        api_key (str): Your TMDB API key.
-
-    Returns:
-        dict or None: A dictionary containing extracted movie information, or None if
-                      the API request fails or response is invalid.
-    """
-    # Construct the API URL. `append_to_response=credits` fetches cast/crew data in one call.
-    url = f'{TMDB_BASE_URL}/movie/{movie_id}?api_key={api_key}&append_to_response=credits'
-    try:
-        # Make the HTTP GET request with a timeout to prevent indefinite waiting.
-        response = requests.get(url, timeout=10)
-        response.raise_for_status() # Raises an HTTPError for 4xx or 5xx status codes.
-
-        data = response.json() # Parse the JSON response.
-
-        # --- Extract and Process Information from API Response ---
-        # Using .get() with a default value prevents KeyError if a key is missing.
-        movie_info = {
-            'movie_id': data.get('id'),
-            'title': data.get('title'),
-            'overview': data.get('overview'),
-            # TMDB 'genres' are directly a list of dicts. convert_json_to_list expects a string,
-            # so we convert it to string for consistent handling if you were using CSV-loaded data.
-            # For direct API response, you might process `data.get('genres', [])` directly.
-            # However, the current setup is robust for varied inputs.
-            'genres': convert_json_to_list(str(data.get('genres', []))),
-            # Keywords are nested under 'keywords' -> 'keywords' list of dicts.
-            'keywords': convert_json_to_list(str(data.get('keywords', {'keywords': []}).get('keywords', []))),
-            'cast': get_top_n_cast(data.get('credits', {}).get('cast', [])),
-            # Director is singular, but combined_tags_list expects a list, so wrap it.
-            'crew': [get_director_from_crew(data.get('credits', {}).get('crew', []))],
-            'poster_path': data.get('poster_path'),
-            'release_date': data.get('release_date'),
-            # Use 'or 0.0' / 'or 0' to handle None/NaN values by defaulting to 0.
-            'vote_average': float(data.get('vote_average') or 0.0),
-            'vote_count': int(data.get('vote_count') or 0),
-            'popularity': float(data.get('popularity') or 0.0)
-        }
-        return movie_info
-    except requests.exceptions.RequestException as e:
-        # Catches all request-related errors (connection, timeout, HTTP errors).
-        logging.warning(f"API request failed for movie ID {movie_id}: {e}")
-        return None
-    except Exception as e:
-        # Catches any other unexpected errors during JSON parsing or data extraction.
-        logging.error(f"Error processing API response for movie ID {movie_id}: {e}")
-        return None
-
 def get_popular_movies(api_key, page=1):
-    url = f'{TMDB_BASE_URL}/movie/popular?api_key={api_key}&page={page}'
+    """Fetch popular movies from TMDB API."""
+    url = f"{TMDB_BASE_URL}/movie/popular"
+    params = {
+        'api_key': api_key,
+        'page': page,
+        'language': 'en-US'
+    }
+    
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, params=params)
         response.raise_for_status()
-        data = response.json()
-        return data.get('results', [])
-    except Exception as e:
+        return response.json()['results']
+    except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching popular movies: {e}")
         return []
+
+def fetch_movie_data_from_api(movie_id, api_key):
+    """Fetch detailed movie data from TMDB API."""
+    url = f"{TMDB_BASE_URL}/movie/{movie_id}"
+    params = {
+        'api_key': api_key,
+        'append_to_response': 'credits,keywords',
+        'language': 'en-US'
+    }
+    
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        movie_data = response.json()
+        
+        # Extract required fields
+        return {
+            'id': movie_data.get('id'),
+            'title': movie_data.get('title'),
+            'overview': movie_data.get('overview', ''),
+            'genres': [genre['name'] for genre in movie_data.get('genres', [])],
+            'keywords': [keyword['name'] for keyword in movie_data.get('keywords', {}).get('keywords', [])],
+            'cast': [cast['name'] for cast in movie_data.get('credits', {}).get('cast', [])[:5]],
+            'crew': [crew['name'] for crew in movie_data.get('credits', {}).get('crew', []) if crew['job'] == 'Director']
+        }
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error fetching movie {movie_id}: {e}")
+        return None
 
 # --- Main Script Execution ---
 # This block ensures that the code inside it only runs when the script is executed directly,
@@ -203,10 +182,17 @@ if __name__ == "__main__":
         for page in range(1, 6):  # Get movies from first 5 pages
             logging.info(f"Fetching page {page} of popular movies...")
             popular_movies = get_popular_movies(TMDB_API_KEY, page)
+            if not popular_movies:
+                logging.error(f"Failed to fetch movies from page {page}")
+                continue
             movie_ids = [movie['id'] for movie in popular_movies]
             all_movie_ids.extend(movie_ids)
             logging.info(f"Found {len(movie_ids)} movies on page {page}")
             time.sleep(0.3)  # Respect API rate limits
+
+        if not all_movie_ids:
+            logging.error("No movies were fetched. Exiting.")
+            sys.exit(1)
 
         logging.info(f"Found {len(all_movie_ids)} popular movies to process")
 
