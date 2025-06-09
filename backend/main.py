@@ -38,15 +38,7 @@ def load_data():
             data = pickle.load(f)
         # Handle both dict and tuple formats
         if isinstance(data, dict):
-            movie_data = pd.DataFrame({
-                'id': data['id'],
-                'title': data['title'],
-                'overview': data['overview'],
-                'poster_path': data['poster_path'],
-                'release_date': data['release_date'],
-                'vote_average': data['vote_average'],
-                'genres': data['genres']
-            })
+            movie_data = data['movies_df']
             if 'similarity_matrix' in data:
                 similarity_matrix = data['similarity_matrix']
                 if isinstance(similarity_matrix, np.ndarray):
