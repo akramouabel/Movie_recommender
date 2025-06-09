@@ -36,7 +36,15 @@ TMDB_BASE_URL = 'https://api.themoviedb.org/3' # Base URL for TMDB API v3 endpoi
 # --- Project Directory Configuration ---
 # Get the absolute path to the project root directory
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+
+# Check for Render deployment path
+RENDER_DATA_DIR = '/opt/render/project/src/data'
+if os.path.exists(RENDER_DATA_DIR):
+    PROCESSED_DATA_DIR = RENDER_DATA_DIR
+    logging.info(f"Using Render deployment data directory: {PROCESSED_DATA_DIR}")
+else:
+    PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+    logging.info(f"Using local data directory: {PROCESSED_DATA_DIR}")
 
 # Create data directory if it doesn't exist
 try:
@@ -45,12 +53,6 @@ try:
 except Exception as e:
     logging.error(f"Failed to create data directory: {e}")
     sys.exit(1)
-
-# Check for Render deployment path
-RENDER_DATA_DIR = '/opt/render/project/src/data'
-if os.path.exists(RENDER_DATA_DIR):
-    PROCESSED_DATA_DIR = RENDER_DATA_DIR
-    logging.info(f"Using Render deployment data directory: {PROCESSED_DATA_DIR}")
 
 OUTPUT_PKL_FILE = os.path.join(PROCESSED_DATA_DIR, 'movie_data_api.pkl')
 logging.info(f"Will save data to: {OUTPUT_PKL_FILE}")
@@ -264,10 +266,22 @@ if __name__ == "__main__":
             'similarity_matrix': similarity_matrix
         }
         
-        with open(OUTPUT_PKL_FILE, 'wb') as f:
-            pickle.dump(processed_data, f)
+        try:
+            with open(OUTPUT_PKL_FILE, 'wb') as f:
+                pickle.dump(processed_data, f)
+            logging.info(f"Successfully saved processed data to {OUTPUT_PKL_FILE}")
+            
+            # Verify the file was created
+            if os.path.exists(OUTPUT_PKL_FILE):
+                file_size = os.path.getsize(OUTPUT_PKL_FILE)
+                logging.info(f"Data file created successfully. Size: {file_size} bytes")
+            else:
+                logging.error(f"Data file was not created at {OUTPUT_PKL_FILE}")
+                sys.exit(1)
+        except Exception as e:
+            logging.error(f"Error saving data file: {e}")
+            sys.exit(1)
         
-        logging.info(f"Successfully saved processed data to {OUTPUT_PKL_FILE}")
         logging.info("Data generation completed successfully!")
 
     except Exception as e:
