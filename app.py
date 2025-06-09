@@ -3,7 +3,7 @@ import os
 import logging
 import pandas as pd
 import json
-from backend import recommender
+from backend.recommender import get_recommendations, get_title_suggestions, get_genres, get_years, load_recommendation_data, movies_df, cosine_sim # Import necessary functions and data
 from flask_cors import CORS
 import pickle
 import numpy as np
@@ -17,34 +17,36 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
 
-# Global variables for data
-movies_df = None
-similarity_matrix = None
+# Global variables for data (removed, as they will be imported from recommender)
+# movies_df = None
+# similarity_matrix = None
 
-def load_data():
-    """Load the movie data and similarity matrix from the pickle file."""
-    global movies_df, similarity_matrix
-    
-    # Try to load from the Render deployment path first
-    pkl_path = '/opt/render/project/src/data/movie_data_api.pkl'
-    if not os.path.exists(pkl_path):
-        # Fall back to local path
-        pkl_path = 'data/movie_data_api.pkl'
-    
-    try:
-        with open(pkl_path, 'rb') as f:
-            data = pickle.load(f)
-            movies_df = data['movies_df']
-            similarity_matrix = data['similarity_matrix']
-        logging.info(f"Successfully loaded data from {pkl_path}")
-        return True
-    except Exception as e:
-        logging.error(f"Error loading data: {e}")
-        return False
+# Removed redundant data loading function
+# def load_data():
+#     """Load the movie data and similarity matrix from the pickle file."""
+#     global movies_df, similarity_matrix
+#     
+#     # Try to load from the Render deployment path first
+#     pkl_path = '/opt/render/project/src/data/movie_data_api.pkl'
+#     if not os.path.exists(pkl_path):
+#         # Fall back to local path
+#         pkl_path = 'data/movie_data_api.pkl'
+#     
+#     try:
+#         with open(pkl_path, 'rb') as f:
+#             data = pickle.load(f)
+#             movies_df = data['movies_df']
+#             similarity_matrix = data['similarity_matrix']
+#         logging.info(f"Successfully loaded data from {pkl_path}")
+#         return True
+#     except Exception as e:
+#         logging.error(f"Error loading data: {e}")
+#         return False
 
-# Load data when the app starts
-if not load_data():
-    logging.critical("CRITICAL: Recommendation data could not be loaded on backend startup. Flask app may not function correctly.")
+# Ensure recommendation data is loaded when the recommender module is imported
+# This call is likely redundant if the module itself handles initial loading
+# if not load_recommendation_data():
+#     logging.critical("CRITICAL: Recommendation data could not be loaded on backend startup. Flask app may not function correctly.")
 
 # --- API Routes ---
 
@@ -74,7 +76,7 @@ def recommend():
         movie_idx = movie_idx[0]
         
         # Get similarity scores
-        sim_scores = list(enumerate(similarity_matrix[movie_idx]))
+        sim_scores = list(enumerate(cosine_sim[movie_idx]))
         sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
         sim_scores = sim_scores[1:11]  # Get top 10 similar movies
         

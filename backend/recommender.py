@@ -173,6 +173,9 @@ def load_recommendation_data():
         all_titles_for_suggestions = []
         return False
 
+# Call to load data when the module is imported
+load_recommendation_data()
+
 def get_title_suggestions(title_query, n=5, cutoff=0.3):
     """
     Returns a list of movie titles that are "close" to the provided query string using fuzzy matching.
@@ -282,10 +285,3 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
             'popularity': float(rec_movie.get('popularity', 0.0) or 0.0)
         })
     return formatted_recommendations, exact_matched_title
-
-# --- Initial Data Loading on Module Import ---
-# This block attempts to load the recommendation data when the 'recommender.py' module
-# is first imported (e.g., by 'backend/main.py' when the Flask app starts).
-# This is a critical step to ensure that the data is ready in memory before any API requests come in.
-if not load_recommendation_data():
-    logging.critical("CRITICAL: Recommendation data could not be loaded on backend startup. Flask app may not function correctly.")
