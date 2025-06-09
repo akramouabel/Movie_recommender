@@ -31,37 +31,35 @@ similarity_matrix = None
 def load_data():
     """Load data with memory optimization"""
     global movie_data, similarity_matrix
-    
     try:
         data_path = 'data/movie_data_api.pkl'  # Hardcoded path
         logger.info(f"Attempting to load recommendation data from: {data_path}")
-        
-        # Load data in chunks if it's a large file
         with open(data_path, 'rb') as f:
             data = pickle.load(f)
-            
-        # Extract only necessary columns to reduce memory usage
-        movie_data = pd.DataFrame({
-            'id': data['id'],
-            'title': data['title'],
-            'overview': data['overview'],
-            'poster_path': data['poster_path'],
-            'release_date': data['release_date'],
-            'vote_average': data['vote_average'],
-            'genres': data['genres']
-        })
-        
-        # Convert similarity matrix to sparse format if it exists
-        if 'similarity_matrix' in data:
-            similarity_matrix = data['similarity_matrix']
-            if isinstance(similarity_matrix, np.ndarray):
-                from scipy import sparse
-                similarity_matrix = sparse.csr_matrix(similarity_matrix)
-        
-        # Clear memory
+        # Handle both dict and tuple formats
+        if isinstance(data, dict):
+            movie_data = pd.DataFrame({
+                'id': data['id'],
+                'title': data['title'],
+                'overview': data['overview'],
+                'poster_path': data['poster_path'],
+                'release_date': data['release_date'],
+                'vote_average': data['vote_average'],
+                'genres': data['genres']
+            })
+            if 'similarity_matrix' in data:
+                similarity_matrix = data['similarity_matrix']
+                if isinstance(similarity_matrix, np.ndarray):
+                    from scipy import sparse
+                    similarity_matrix = sparse.csr_matrix(similarity_matrix)
+        elif isinstance(data, tuple):
+            movie_data = data[0]
+            similarity_matrix = data[1] if len(data) > 1 else None
+        else:
+            logger.error(f"Unrecognized data format in PKL file: {type(data)}")
+            return False
         del data
         gc.collect()
-        
         logger.info("Data loaded successfully")
         return True
     except Exception as e:

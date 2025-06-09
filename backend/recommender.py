@@ -139,9 +139,17 @@ def load_recommendation_data():
             logging.error(f"Error: PKL file NOT FOUND at {PKL_FILE_PATH}. Please ensure 'generate_data.py' was run successfully.")
             return False
         with open(PKL_FILE_PATH, 'rb') as file:
-            data_dict = pickle.load(file)
-            movies_df = data_dict['movies_df']
-            cosine_sim = data_dict['similarity_matrix']
+            data = pickle.load(file)
+            # Handle both dict and tuple formats
+            if isinstance(data, dict):
+                movies_df = data['movies_df']
+                cosine_sim = data['similarity_matrix']
+            elif isinstance(data, tuple):
+                movies_df = data[0]
+                cosine_sim = data[1] if len(data) > 1 else None
+            else:
+                logging.error(f"Unrecognized data format in PKL file: {type(data)}")
+                return False
         # --- CRITICAL FIX/ASSUMPTION: Ensure 'genres' column contains actual lists ---
         if 'genres' in movies_df.columns:
             # Apply ast.literal_eval only to those that are strings
@@ -150,7 +158,7 @@ def load_recommendation_data():
             movies_df['genres'] = movies_df['genres'].apply(lambda x: [item.strip() for item in x] if isinstance(x, list) else [])
         all_titles_for_suggestions = movies_df['title'].tolist()
         logging.info(f"Successfully loaded {len(movies_df)} movies and cosine similarity matrix.")
-        if movies_df is None or movies_df.empty or cosine_sim is None or cosine_sim.size == 0:
+        if movies_df is None or movies_df.empty or cosine_sim is None or (hasattr(cosine_sim, 'size') and cosine_sim.size == 0):
             logging.error("Loaded data is empty or malformed after pickle.load. Clearing global variables.")
             movies_df = None
             cosine_sim = None
