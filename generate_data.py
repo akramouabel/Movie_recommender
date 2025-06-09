@@ -183,6 +183,22 @@ def main():
         logging.error(f"Error saving movie embeddings: {str(e)}")
         sys.exit(1)
 
+    # Generate and save movie clusters
+    logging.info("DEBUG: Starting KMeans clustering process.")
+    try:
+        from sklearn.cluster import KMeans
+        # Use a reasonable number of clusters, e.g., 20, or make it configurable
+        kmeans = KMeans(n_clusters=20, random_state=42, n_init=10) # Added n_init to suppress warning
+        logging.info("DEBUG: KMeans model initialized. Fitting data...")
+        movie_clusters = kmeans.fit_predict(movie_embeddings)
+        clusters_output_path = DATA_DIR / "movie_clusters.npy"
+        logging.info(f"DEBUG: KMeans clustering complete. Attempting to save clusters to {clusters_output_path}")
+        np.save(clusters_output_path, movie_clusters)
+        logging.info(f"Movie clusters saved successfully to {clusters_output_path}")
+    except Exception as e:
+        logging.critical(f"CRITICAL: Error generating or saving movie clusters: {e}", exc_info=True)
+        sys.exit(1)
+
     # Save data
     data = {
         'movies_df': df,
