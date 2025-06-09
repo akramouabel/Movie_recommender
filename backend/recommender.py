@@ -103,23 +103,15 @@ def load_or_generate_clusters(n_clusters=20):
     if os.path.exists(CLUSTERS_FILE_PATH):
         try:
             movie_clusters = np.load(CLUSTERS_FILE_PATH)
+            logging.info(f"Successfully loaded movie clusters from {CLUSTERS_FILE_PATH}")
             return movie_clusters
         except Exception as e:
-            logging.warning(f"Could not load clusters file: {e}")
-    
-    # Generate clusters if file doesn't exist or loading failed
-    try:
-        embeddings = load_or_generate_embeddings()
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        movie_clusters = kmeans.fit_predict(embeddings)
-        try:
-            np.save(CLUSTERS_FILE_PATH, movie_clusters)
-        except Exception as e:
-            logging.warning(f"Could not save clusters file: {e}")
-        return movie_clusters
-    except Exception as e:
-        logging.warning(f"Could not generate clusters: {e}")
-        return None
+            logging.critical(f"CRITICAL: Error loading clusters file {CLUSTERS_FILE_PATH}: {e}")
+            sys.exit(1) # Exit if clusters cannot be loaded
+    else:
+        logging.critical(f"CRITICAL: Clusters file NOT FOUND at {CLUSTERS_FILE_PATH}. "
+                         "Ensure 'generate_data.py' was run successfully during the release phase.")
+        sys.exit(1) # Exit if clusters file is missing
 
 # --- Data Loading ---
 def load_recommendation_data():
