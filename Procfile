@@ -24,4 +24,4 @@ release: bash -c "
   fi
   echo 'RENDER_RELEASE_END: Release phase completed'
 "
-web: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 
+web: python generate_data.py && gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 
