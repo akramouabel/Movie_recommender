@@ -245,11 +245,9 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
         cluster = movie_clusters[idx]
         if cluster not in seen_clusters:
             rec_movie = movies_df.iloc[idx]
-            if rec_movie['movie_id'] == movies_df.iloc[movie_idx]['movie_id']:
-                continue
-            if rec_movie['movie_id'] not in recommended_movie_ids:
+            if rec_movie['id'] not in recommended_movie_ids:
                 filtered_recommendations.append(rec_movie)
-                recommended_movie_ids.add(rec_movie['movie_id'])
+                recommended_movie_ids.add(rec_movie['id'])
                 seen_clusters.add(cluster)
         if len(filtered_recommendations) >= num_recommendations:
             break
@@ -257,18 +255,16 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
     if len(filtered_recommendations) < num_recommendations:
         for idx, sim in similarities:
             rec_movie = movies_df.iloc[idx]
-            if rec_movie['movie_id'] == movies_df.iloc[movie_idx]['movie_id']:
-                continue
-            if rec_movie['movie_id'] not in recommended_movie_ids:
+            if rec_movie['id'] not in recommended_movie_ids:
                 filtered_recommendations.append(rec_movie)
-                recommended_movie_ids.add(rec_movie['movie_id'])
+                recommended_movie_ids.add(rec_movie['id'])
             if len(filtered_recommendations) >= num_recommendations:
                 break
     # --- 4. Format Output for Frontend ---
     formatted_recommendations = []
     for rec_movie in filtered_recommendations:
         formatted_recommendations.append({
-            'movie_id': int(rec_movie.get('movie_id', -1)),
+            'movie_id': int(rec_movie.get('id', -1)),
             'title': rec_movie.get('title', 'N/A'),
             'overview': rec_movie.get('overview', 'N/A'),
             'poster_path': rec_movie.get('poster_path'),
