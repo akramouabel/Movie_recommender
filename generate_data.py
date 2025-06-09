@@ -163,8 +163,8 @@ def main():
     
     # Save data
     data = {
-        'df': df,
-        'similarity': similarity
+        'movies_df': df,
+        'similarity_matrix': similarity
     }
     
     logging.info(f"Attempting to save data to {OUTPUT_PKL_FILE}")
