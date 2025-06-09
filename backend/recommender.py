@@ -142,9 +142,9 @@ def load_recommendation_data():
             logging.error(f"Error: PKL file NOT FOUND at {PKL_FILE_PATH}. Please ensure 'generate_data.py' was run successfully.")
             return False
         with open(PKL_FILE_PATH, 'rb') as file:
-            data_tuple = pickle.load(file)
-            movies_df = data_tuple[0]
-            cosine_sim = data_tuple[1]
+            data_dict = pickle.load(file)
+            movies_df = data_dict['movies_df']
+            cosine_sim = data_dict['similarity_matrix']
         # --- CRITICAL FIX/ASSUMPTION: Ensure 'genres' column contains actual lists ---
         if 'genres' in movies_df.columns:
             # Apply ast.literal_eval only to those that are strings
