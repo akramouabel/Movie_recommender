@@ -109,7 +109,7 @@ def main():
     
     # Fetch movies from first 3 pages only to reduce time
     all_movies = []
-    for page in range(1, 4):
+    for page in range(1, 101): # Increased to fetch 100 pages for a larger dataset
         logging.info(f"Fetching page {page}")
         movies = fetch_movies(page)
         if not movies:
