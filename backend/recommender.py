@@ -13,6 +13,7 @@ import os # For interacting with the operating system, particularly for path man
 import time # Not directly used here, but may be useful for profiling
 import logging # For structured logging
 from difflib import get_close_matches # For fuzzy string matching
+import torch # Re-added for model.half()
 # --- New imports for embeddings and clustering ---
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -86,8 +87,9 @@ def load_or_generate_embeddings():
             logging.warning(f"Could not load embeddings file: {e}")
     
     # Generate embeddings if file doesn't exist or loading failed
-    # Load model without quantization (as it's causing TypeError) and explicit CPU device for memory reduction
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+    # Load model and convert to half-precision (FP16) for memory reduction
+    embedding_model = SentenceTransformer('msmarco-MiniLM-L6-cos-v5', device='cpu')
+    embedding_model.half() # Convert model to FP16
     texts = (movies_df['title'] + ' ' + movies_df['overview']).tolist()
     movie_embeddings = embedding_model.encode(texts, show_progress_bar=True)
     try:
