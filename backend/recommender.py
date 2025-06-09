@@ -13,9 +13,8 @@ import os # For interacting with the operating system, particularly for path man
 import time # Not directly used here, but may be useful for profiling
 import logging # For structured logging
 from difflib import get_close_matches # For fuzzy string matching
-import torch # Re-added for model.half()
+import sys # Added for sys.exit()
 # --- New imports for embeddings and clustering ---
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 
@@ -35,7 +34,6 @@ cosine_sim = None # Cosine similarity matrix (legacy, not used with embeddings)
 all_titles_for_suggestions = [] # List of all movie titles for suggestions
 movie_embeddings = None # Numpy array of movie embeddings
 movie_clusters = None # Numpy array of cluster assignments
-embedding_model = None # SentenceTransformer model instance
 
 # --- Helper Functions for Multi-Feature Similarity ---
 def genre_similarity(genres1, genres2):
@@ -76,27 +74,23 @@ def load_or_generate_embeddings():
     Loads movie embeddings from disk if available, otherwise generates and saves them.
     Returns a numpy array of embeddings.
     """
-    global movie_embeddings, embedding_model
+    global movie_embeddings
     if movie_embeddings is not None:
+        logging.info("Movie embeddings already loaded.")
         return movie_embeddings
+
     if os.path.exists(EMBEDDINGS_FILE_PATH):
         try:
             movie_embeddings = np.load(EMBEDDINGS_FILE_PATH)
+            logging.info(f"Successfully loaded movie embeddings from {EMBEDDINGS_FILE_PATH}")
             return movie_embeddings
         except Exception as e:
-            logging.warning(f"Could not load embeddings file: {e}")
-    
-    # Generate embeddings if file doesn't exist or loading failed
-    # Load model and convert to half-precision (FP16) for memory reduction
-    embedding_model = SentenceTransformer('msmarco-MiniLM-L6-cos-v5', device='cpu')
-    embedding_model.half() # Convert model to FP16
-    texts = (movies_df['title'] + ' ' + movies_df['overview']).tolist()
-    movie_embeddings = embedding_model.encode(texts, show_progress_bar=True)
-    try:
-        np.save(EMBEDDINGS_FILE_PATH, movie_embeddings)
-    except Exception as e:
-        logging.warning(f"Could not save embeddings file: {e}")
-    return movie_embeddings
+            logging.critical(f"CRITICAL: Error loading embeddings file {EMBEDDINGS_FILE_PATH}: {e}")
+            sys.exit(1) # Exit if embeddings cannot be loaded
+    else:
+        logging.critical(f"CRITICAL: Embeddings file NOT FOUND at {EMBEDDINGS_FILE_PATH}. "
+                         "Ensure 'generate_data.py' was run successfully during the release phase.")
+        sys.exit(1) # Exit if embeddings file is missing
 
 def load_or_generate_clusters(n_clusters=20):
     """
@@ -214,8 +208,6 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
         logging.error(f"Error: Matched title '{exact_matched_title}' not found in DataFrame index after fuzzy match.")
         return [], "An internal error occurred while finding the movie for recommendations. Please try again."
     # --- Multi-feature similarity with diversity ---
-    embeddings = load_or_generate_embeddings()
-    clusters = load_or_generate_clusters()
     similarities = []
     for idx in range(len(movies_df)):
         if idx == movie_idx:
@@ -241,7 +233,7 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
             movie_genres_set = {g.strip() for g in movie_genres_from_df if isinstance(g, str)}
             if not any(s_genre in movie_genres_set for s_genre in parsed_selected_genres):
                 continue
-        sim = combined_similarity(movie_idx, idx, embeddings, movies_df)
+        sim = combined_similarity(movie_idx, idx, movie_embeddings, movies_df)
         similarities.append((idx, sim))
     similarities.sort(key=lambda x: x[1], reverse=True)
     # --- Cluster-based diversity ---
@@ -249,7 +241,7 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
     filtered_recommendations = []
     recommended_movie_ids = set()
     for idx, sim in similarities:
-        cluster = clusters[idx]
+        cluster = movie_clusters[idx]
         if cluster not in seen_clusters:
             rec_movie = movies_df.iloc[idx]
             if rec_movie['movie_id'] == movies_df.iloc[movie_idx]['movie_id']:
