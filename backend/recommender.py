@@ -157,6 +157,7 @@ def load_recommendation_data():
             # Ensure all entries are lists, default to empty list if None/NaN
             movies_df['genres'] = movies_df['genres'].apply(lambda x: [item.strip() for item in x] if isinstance(x, list) else [])
         all_titles_for_suggestions = movies_df['title'].tolist()
+        logging.info(f"First 5 movie titles loaded: {all_titles_for_suggestions[:5]}")
         logging.info(f"Successfully loaded {len(movies_df)} movies and cosine similarity matrix.")
         if movies_df is None or movies_df.empty or cosine_sim is None or (hasattr(cosine_sim, 'size') and cosine_sim.size == 0):
             logging.error("Loaded data is empty or malformed after pickle.load. Clearing global variables.")
