@@ -1,1 +1,1 @@
-web: bash -c "set -ex; echo 'Starting combined data generation and web service...'; export PYTHONPATH=$PWD; DATA_DIR=\"/opt/render/project/src/data\"; mkdir -p $DATA_DIR; echo \"Running generate_data.py\"; python generate_data.py; echo \"generate_data.py finished. Starting Gunicorn.\"; gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120" 
+web: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 
