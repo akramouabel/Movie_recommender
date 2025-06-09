@@ -35,6 +35,7 @@ OUTPUT_PKL_FILE = DATA_DIR / "movie_data_api.pkl"
 # Create data directory if it doesn't exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 logging.info(f"Using data directory: {DATA_DIR}")
+logging.info(f"Output file will be: {OUTPUT_PKL_FILE}")
 
 def fetch_movies(page=1):
     """Fetch movies from TMDB API with timeout handling"""
@@ -46,7 +47,7 @@ def fetch_movies(page=1):
                 "page": page,
                 "language": "en-US"
             },
-            timeout=10  # Add timeout
+            timeout=10
         )
         response.raise_for_status()
         return response.json()["results"]
@@ -67,7 +68,7 @@ def get_movie_details(movie_id):
                 "language": "en-US",
                 "append_to_response": "credits,keywords"
             },
-            timeout=10  # Add timeout
+            timeout=10
         )
         response.raise_for_status()
         return response.json()
