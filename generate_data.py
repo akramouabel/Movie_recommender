@@ -39,6 +39,7 @@ logging.info(f"Output file will be: {OUTPUT_PKL_FILE}")
 
 def fetch_movies(page=1):
     """Fetch movies from TMDB API with timeout handling"""
+    logging.info(f"Attempting to fetch popular movies from TMDB - Page {page}")
     try:
         response = requests.get(
             f"{BASE_URL}/movie/popular",
@@ -50,6 +51,8 @@ def fetch_movies(page=1):
             timeout=10
         )
         response.raise_for_status()
+        time.sleep(0.1) # Small delay to respect API rate limits
+        logging.info(f"Successfully fetched page {page}")
         return response.json()["results"]
     except requests.exceptions.Timeout:
         logging.error(f"Timeout while fetching page {page}")
@@ -71,6 +74,7 @@ def get_movie_details(movie_id):
             timeout=10
         )
         response.raise_for_status()
+        time.sleep(0.1) # Small delay to respect API rate limits
         return response.json()
     except requests.exceptions.Timeout:
         logging.error(f"Timeout while fetching details for movie {movie_id}")
@@ -107,18 +111,22 @@ def main():
         logging.info(f"Fetching page {page}")
         movies = fetch_movies(page)
         if not movies:
-            logging.warning(f"No movies found on page {page}")
+            logging.warning(f"No movies found on page {page}. Skipping to next page.")
             continue
         all_movies.extend(movies)
-        logging.info(f"Found {len(movies)} movies on page {page}")
+        logging.info(f"Found {len(movies)} movies on page {page}. Total movies fetched so far: {len(all_movies)}")
     
     if not all_movies:
-        logging.error("No movies fetched. Exiting.")
+        logging.error("No movies fetched from TMDB API. Exiting data generation.")
         sys.exit(1)
+    
+    logging.info(f"Total raw movies fetched: {len(all_movies)}")
     
     # Process movie data
     processed_movies = []
-    for movie in all_movies:
+    for i, movie in enumerate(all_movies):
+        if i % 10 == 0: # Log progress every 10 movies
+            logging.info(f"Processing movie {i+1}/{len(all_movies)}")
         movie_details = get_movie_details(movie['id'])
         if movie_details:
             processed_movie = process_movie_data(movie_details)
@@ -126,13 +134,17 @@ def main():
                 processed_movies.append(processed_movie)
     
     if not processed_movies:
-        logging.error("No movies processed successfully. Exiting.")
+        logging.error("No movies processed successfully. Exiting data generation.")
         sys.exit(1)
     
+    logging.info(f"Total movies successfully processed: {len(processed_movies)}")
+
     # Create DataFrame
+    logging.info("Creating DataFrame from processed movie data.")
     df = pd.DataFrame(processed_movies)
     
     # Create tags for TF-IDF
+    logging.info("Generating TF-IDF tags.")
     df['tags'] = df.apply(lambda x: ' '.join([
         str(x['overview']),
         ' '.join(x['genres']),
@@ -141,10 +153,12 @@ def main():
     ]), axis=1)
     
     # Create TF-IDF vectors
+    logging.info("Creating TF-IDF vectors.")
     tfidf = TfidfVectorizer(max_features=5000, stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['tags'].fillna(''))
     
     # Calculate similarity matrix
+    logging.info("Calculating cosine similarity matrix.")
     similarity = cosine_similarity(tfidf_matrix)
     
     # Save data
@@ -153,6 +167,7 @@ def main():
         'similarity': similarity
     }
     
+    logging.info(f"Attempting to save data to {OUTPUT_PKL_FILE}")
     try:
         with open(OUTPUT_PKL_FILE, 'wb') as f:
             pickle.dump(data, f)
@@ -163,7 +178,7 @@ def main():
             file_size = OUTPUT_PKL_FILE.stat().st_size
             logging.info(f"File size: {file_size / 1024 / 1024:.2f} MB")
         else:
-            logging.error("File was not created successfully")
+            logging.error("File was not created successfully after dump.")
             sys.exit(1)
             
     except Exception as e:
