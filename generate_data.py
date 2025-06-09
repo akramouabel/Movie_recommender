@@ -6,6 +6,7 @@ import pickle # For serializing and deserializing Python objects (saving and loa
 import os # For interacting with the operating system, e.g., creating directories, managing file paths
 import time # For pausing execution, crucial for respecting API rate limits
 import logging # For structured logging of information, warnings, and errors
+import sys
 from sklearn.feature_extraction.text import TfidfVectorizer # Converts text data into numerical vectors using TF-IDF
 from sklearn.metrics.pairwise import cosine_similarity # Computes cosine similarity between vectors, useful for content-based recommendations
 
@@ -13,13 +14,23 @@ from sklearn.metrics.pairwise import cosine_similarity # Computes cosine similar
 # Configures the basic logging system. Logs will be printed to the console.
 # INFO level logs will show general progress and important steps.
 # ERROR/CRITICAL logs will highlight problems.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # --- TMDB API Configuration ---
 # Your TMDB API key. This is sensitive information and in a production environment,
 # it should ideally be loaded from environment variables (e.g., os.getenv('TMDB_API_KEY'))
 # instead of being hardcoded directly in the script for security and flexibility.
-TMDB_API_KEY = os.getenv('TMDB_API_KEY', 'your_tmdb_api_key_here')  # Get from environment variable
+TMDB_API_KEY = os.getenv('TMDB_API_KEY')
+if not TMDB_API_KEY:
+    logging.error("TMDB_API_KEY environment variable not set")
+    sys.exit(1)
+
 TMDB_BASE_URL = 'https://api.themoviedb.org/3' # Base URL for TMDB API v3 endpoints
 
 # --- Project Directory Configuration ---
@@ -36,6 +47,8 @@ OUTPUT_PKL_FILE = os.path.join(PROCESSED_DATA_DIR, 'movie_data_api.pkl')
 # `exist_ok=True` prevents an error if the directory already exists.
 os.makedirs(RAW_DATA_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+logging.info(f"Created/verified data directory: {PROCESSED_DATA_DIR}")
+logging.info(f"Will save data to: {OUTPUT_PKL_FILE}")
 
 # --- Helper Functions for Data Processing ---
 
@@ -179,81 +192,90 @@ def get_popular_movies(api_key, page=1):
 # This block ensures that the code inside it only runs when the script is executed directly,
 # not when it's imported as a module into another script.
 if __name__ == "__main__":
-    logging.info("--- Starting data fetching and processing ---")
+    try:
+        logging.info("--- Starting data fetching and processing ---")
+        logging.info(f"Using TMDB API key: {TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}")
 
-    # API key validation
-    if TMDB_API_KEY == 'your_tmdb_api_key_here':
-        logging.critical("ERROR: Please replace 'your_tmdb_api_key_here' with your actual TMDB API key in generate_data.py")
-        exit(1)
+        # Get popular movies from multiple pages
+        all_movie_ids = []
+        for page in range(1, 6):  # Get movies from first 5 pages
+            logging.info(f"Fetching page {page} of popular movies...")
+            popular_movies = get_popular_movies(TMDB_API_KEY, page)
+            movie_ids = [movie['id'] for movie in popular_movies]
+            all_movie_ids.extend(movie_ids)
+            logging.info(f"Found {len(movie_ids)} movies on page {page}")
+            time.sleep(0.3)  # Respect API rate limits
 
-    # Get popular movies from multiple pages
-    all_movie_ids = []
-    for page in range(1, 6):  # Get movies from first 5 pages
-        popular_movies = get_popular_movies(TMDB_API_KEY, page)
-        movie_ids = [movie['id'] for movie in popular_movies]
-        all_movie_ids.extend(movie_ids)
-        time.sleep(0.3)  # Respect API rate limits
+        logging.info(f"Found {len(all_movie_ids)} popular movies to process")
 
-    logging.info(f"Found {len(all_movie_ids)} popular movies to process")
+        all_fetched_movies_data = []
+        total_movies = len(all_movie_ids)
 
-    all_fetched_movies_data = []
-    total_movies = len(all_movie_ids)
+        for i, movie_id in enumerate(all_movie_ids):
+            if (i + 1) % 10 == 0 or i == 0:
+                logging.info(f"Fetching movie {i + 1}/{total_movies} (ID: {movie_id})...")
 
-    for i, movie_id in enumerate(all_movie_ids):
-        if (i + 1) % 10 == 0 or i == 0:
-            logging.info(f"Fetching movie {i + 1}/{total_movies} (ID: {movie_id})...")
+            movie_data = fetch_movie_data_from_api(movie_id, TMDB_API_KEY)
+            if movie_data:
+                all_fetched_movies_data.append(movie_data)
 
-        movie_data = fetch_movie_data_from_api(movie_id, TMDB_API_KEY)
-        if movie_data:
-            all_fetched_movies_data.append(movie_data)
+            time.sleep(0.3)
 
-        time.sleep(0.3)
+        logging.info(f"Finished fetching data from TMDB API. Fetched data for {len(all_fetched_movies_data)} movies.")
 
-    logging.info(f"Finished fetching data from TMDB API. Fetched data for {len(all_fetched_movies_data)} movies.")
+        if not all_fetched_movies_data:
+            logging.error("No movies were fetched. Exiting.")
+            sys.exit(1)
 
-    # Create DataFrame and process data
-    movies_df_processed = pd.DataFrame(all_fetched_movies_data)
-    
-    logging.info("Processing fetched data for content-based tags and final DataFrame structure...")
-    
-    for col in ['genres', 'keywords', 'cast', 'crew']:
-        movies_df_processed[col] = movies_df_processed[col].apply(
-            lambda x: [str(item).replace(" ", "") for item in (x if isinstance(x, list) else []) if item is not None]
-        )
+        # Create DataFrame and process data
+        movies_df_processed = pd.DataFrame(all_fetched_movies_data)
+        
+        logging.info("Processing fetched data for content-based tags and final DataFrame structure...")
+        
+        for col in ['genres', 'keywords', 'cast', 'crew']:
+            movies_df_processed[col] = movies_df_processed[col].apply(
+                lambda x: [str(item).replace(" ", "") for item in (x if isinstance(x, list) else []) if item is not None]
+            )
 
-    movies_df_processed['overview'] = movies_df_processed['overview'].fillna('')
+        movies_df_processed['overview'] = movies_df_processed['overview'].fillna('')
 
-    movies_df_processed['combined_tags_list'] = \
-        movies_df_processed['genres'] * 2 + \
-        movies_df_processed['keywords'] + \
-        movies_df_processed['cast'] + \
-        movies_df_processed['crew'] + \
-        movies_df_processed['overview'].apply(lambda x: [str(x)] * 2) + \
-        movies_df_processed['title'].apply(lambda x: [str(x).lower().replace(" ", "")])
+        movies_df_processed['combined_tags_list'] = \
+            movies_df_processed['genres'] * 2 + \
+            movies_df_processed['keywords'] + \
+            movies_df_processed['cast'] + \
+            movies_df_processed['crew'] + \
+            movies_df_processed['overview'].apply(lambda x: [str(x)] * 2) + \
+            movies_df_processed['title'].apply(lambda x: [str(x).lower().replace(" ", "")])
 
-    movies_df_processed['tags'] = movies_df_processed['combined_tags_list'].apply(
-        lambda x: " ".join([str(item) for item in x if item is not None])
-    ).apply(lambda x: x.lower().strip())
+        movies_df_processed['tags'] = movies_df_processed['combined_tags_list'].apply(
+            lambda x: " ".join([str(item) for item in x if item is not None])
+        ).apply(lambda x: x.lower().strip())
 
-    # Remove movies with empty tags
-    movies_df_processed = movies_df_processed[movies_df_processed['tags'].str.len() > 0]
-    
-    # Create TF-IDF vectors
-    vectorizer = TfidfVectorizer(max_features=5000)
-    tfidf_matrix = vectorizer.fit_transform(movies_df_processed['tags'])
-    
-    # Calculate similarity matrix
-    similarity_matrix = cosine_similarity(tfidf_matrix)
-    
-    # Save processed data
-    processed_data = {
-        'movies_df': movies_df_processed,
-        'similarity_matrix': similarity_matrix
-    }
-    
-    with open(OUTPUT_PKL_FILE, 'wb') as f:
-        pickle.dump(processed_data, f)
-    
-    logging.info(f"Successfully saved processed data to {OUTPUT_PKL_FILE}")
+        # Remove movies with empty tags
+        movies_df_processed = movies_df_processed[movies_df_processed['tags'].str.len() > 0]
+        
+        # Create TF-IDF vectors
+        logging.info("Creating TF-IDF vectors...")
+        vectorizer = TfidfVectorizer(max_features=5000)
+        tfidf_matrix = vectorizer.fit_transform(movies_df_processed['tags'])
+        
+        # Calculate similarity matrix
+        logging.info("Calculating similarity matrix...")
+        similarity_matrix = cosine_similarity(tfidf_matrix)
+        
+        # Save processed data
+        logging.info(f"Saving processed data to {OUTPUT_PKL_FILE}...")
+        processed_data = {
+            'movies_df': movies_df_processed,
+            'similarity_matrix': similarity_matrix
+        }
+        
+        with open(OUTPUT_PKL_FILE, 'wb') as f:
+            pickle.dump(processed_data, f)
+        
+        logging.info(f"Successfully saved processed data to {OUTPUT_PKL_FILE}")
+        logging.info("Data generation completed successfully!")
 
-    logging.info("Data generation completed successfully!")
+    except Exception as e:
+        logging.error(f"Error during data generation: {e}")
+        sys.exit(1)
