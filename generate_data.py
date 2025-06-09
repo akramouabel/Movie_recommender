@@ -34,20 +34,19 @@ if not TMDB_API_KEY:
 TMDB_BASE_URL = 'https://api.themoviedb.org/3' # Base URL for TMDB API v3 endpoints
 
 # --- Project Directory Configuration ---
-# Defines relative paths for raw input data and processed output data.
-# This makes the script more portable as it doesn't rely on absolute paths.
-RAW_DATA_DIR = 'raw_data' # Directory where input CSV files are expected (e.g., tmdb_5000_movies.csv)
-PROCESSED_DATA_DIR = 'data' # Directory where the final processed .pkl file will be saved
+# Get the absolute path to the project root directory
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
-# Constructs full file paths using os.path.join for cross-platform compatibility.
-MOVIES_CSV_FILE = os.path.join(RAW_DATA_DIR, 'tmdb_5000_movies.csv')
+# Create data directory if it doesn't exist
+try:
+    os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+    logging.info(f"Created/verified data directory: {PROCESSED_DATA_DIR}")
+except Exception as e:
+    logging.error(f"Failed to create data directory: {e}")
+    sys.exit(1)
+
 OUTPUT_PKL_FILE = os.path.join(PROCESSED_DATA_DIR, 'movie_data_api.pkl')
-
-# Ensures that the necessary directories exist. If they don't, they will be created.
-# `exist_ok=True` prevents an error if the directory already exists.
-os.makedirs(RAW_DATA_DIR, exist_ok=True)
-os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
-logging.info(f"Created/verified data directory: {PROCESSED_DATA_DIR}")
 logging.info(f"Will save data to: {OUTPUT_PKL_FILE}")
 
 # --- Helper Functions for Data Processing ---
@@ -195,6 +194,9 @@ if __name__ == "__main__":
     try:
         logging.info("--- Starting data fetching and processing ---")
         logging.info(f"Using TMDB API key: {TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}")
+        logging.info(f"Project root: {PROJECT_ROOT}")
+        logging.info(f"Data directory: {PROCESSED_DATA_DIR}")
+        logging.info(f"Output file: {OUTPUT_PKL_FILE}")
 
         # Get popular movies from multiple pages
         all_movie_ids = []

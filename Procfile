@@ -8,7 +8,8 @@ release: |
       logging.error('TMDB_API_KEY environment variable not set')
       sys.exit(1)
   os.environ['PYTHONPATH'] = os.getcwd()
+  os.makedirs('data', exist_ok=True)
   from generate_data import *
   __main__()
   "
-web: gunicorn app:app 
+web: gunicorn --bind 0.0.0.0:$PORT app:app 
