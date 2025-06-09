@@ -10,6 +10,8 @@ import pickle
 from pathlib import Path
 import ast # Used for safely evaluating strings containing Python literal structures (like lists of dicts)
 import time # For pausing execution, crucial for respecting API rate limits
+from sentence_transformers import SentenceTransformer # Added for embedding generation
+import torch # Added for model.half()
 
 # Configure logging
 logging.basicConfig(
@@ -161,6 +163,26 @@ def main():
     logging.info("Calculating cosine similarity matrix.")
     similarity = cosine_similarity(tfidf_matrix)
     
+    # Generate and save movie embeddings
+    logging.info("Loading SentenceTransformer model for embedding generation.")
+    # Load model and convert to half-precision (FP16) for memory reduction during generation
+    embedding_model = SentenceTransformer('msmarco-MiniLM-L6-cos-v5', device='cpu')
+    embedding_model.half() # Convert model to FP16
+
+    # Use movie title and overview for embeddings
+    texts_for_embeddings = (df['title'] + ' ' + df['overview'].fillna('')).tolist()
+    logging.info("Generating movie embeddings.")
+    movie_embeddings = embedding_model.encode(texts_for_embeddings, show_progress_bar=True)
+    
+    embeddings_output_path = DATA_DIR / "movie_embeddings.npy"
+    logging.info(f"Attempting to save movie embeddings to {embeddings_output_path}")
+    try:
+        np.save(embeddings_output_path, movie_embeddings)
+        logging.info(f"Movie embeddings saved successfully to {embeddings_output_path}")
+    except Exception as e:
+        logging.error(f"Error saving movie embeddings: {str(e)}")
+        sys.exit(1)
+
     # Save data
     data = {
         'movies_df': df,
