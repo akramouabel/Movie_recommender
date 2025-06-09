@@ -164,74 +164,65 @@ def fetch_movie_data_from_api(movie_id, api_key):
         logging.error(f"Error processing API response for movie ID {movie_id}: {e}")
         return None
 
+def get_popular_movies(api_key, page=1):
+    url = f'{TMDB_BASE_URL}/movie/popular?api_key={api_key}&page={page}'
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('results', [])
+    except Exception as e:
+        logging.error(f"Error fetching popular movies: {e}")
+        return []
+
 # --- Main Script Execution ---
 # This block ensures that the code inside it only runs when the script is executed directly,
 # not when it's imported as a module into another script.
 if __name__ == "__main__":
     logging.info("--- Starting data fetching and processing ---")
 
-    # Load movie IDs from the local CSV file. This CSV primarily provides a list of movie IDs
-    # and titles to iterate through, as the comprehensive data is fetched from TMDB API.
-    try:
-        # Only load 'id' and 'title' columns to save memory if CSV is large.
-        movies_ids_df_raw = pd.read_csv(MOVIES_CSV_FILE, usecols=['id', 'title'])
-        # Get unique movie IDs to avoid redundant API calls if CSV has duplicates.
-        movie_ids_to_fetch = movies_ids_df_raw['id'].unique().tolist()
-        logging.info(f"Loaded {len(movie_ids_to_fetch)} unique movie IDs from {MOVIES_CSV_FILE}.")
-    except FileNotFoundError:
-        logging.critical(f"ERROR: Raw movies CSV not found at {MOVIES_CSV_FILE}. Please check your '{RAW_DATA_DIR}' folder.")
-        exit(1) # Exit with an error code
-    except Exception as e:
-        logging.critical(f"ERROR loading raw movies CSV: {e}")
-        exit(1) # Exit with an error code
-
-    all_fetched_movies_data = []
-    total_movies = len(movie_ids_to_fetch)
-    logging.info(f"Attempting to fetch comprehensive data for {total_movies} movies from TMDB API.")
-
-    # API key validation before starting expensive API calls.
+    # API key validation
     if TMDB_API_KEY == 'your_tmdb_api_key_here':
         logging.critical("ERROR: Please replace 'your_tmdb_api_key_here' with your actual TMDB API key in generate_data.py")
         exit(1)
 
-    # Iterate through each movie ID and fetch data from TMDB API.
-    for i, movie_id in enumerate(movie_ids_to_fetch):
-        # Log progress periodically to give feedback on long-running operations.
-        if (i + 1) % 100 == 0 or i == 0:
+    # Get popular movies from multiple pages
+    all_movie_ids = []
+    for page in range(1, 6):  # Get movies from first 5 pages
+        popular_movies = get_popular_movies(TMDB_API_KEY, page)
+        movie_ids = [movie['id'] for movie in popular_movies]
+        all_movie_ids.extend(movie_ids)
+        time.sleep(0.3)  # Respect API rate limits
+
+    logging.info(f"Found {len(all_movie_ids)} popular movies to process")
+
+    all_fetched_movies_data = []
+    total_movies = len(all_movie_ids)
+
+    for i, movie_id in enumerate(all_movie_ids):
+        if (i + 1) % 10 == 0 or i == 0:
             logging.info(f"Fetching movie {i + 1}/{total_movies} (ID: {movie_id})...")
 
         movie_data = fetch_movie_data_from_api(movie_id, TMDB_API_KEY)
         if movie_data:
             all_fetched_movies_data.append(movie_data)
 
-        # Introduce a small delay to respect TMDB API rate limits.
-        # TMDB's public API usually allows ~40 requests per 10 seconds.
-        # A 0.3 second delay ensures you stay well within limits (1/0.3 = ~3.3 requests per second).
         time.sleep(0.3)
 
     logging.info(f"Finished fetching data from TMDB API. Fetched data for {len(all_fetched_movies_data)} movies.")
 
-    # Create a Pandas DataFrame from the list of fetched movie dictionaries.
+    # Create DataFrame and process data
     movies_df_processed = pd.DataFrame(all_fetched_movies_data)
     
-    # --- Post-fetching processing for content-based 'tags' ---
     logging.info("Processing fetched data for content-based tags and final DataFrame structure...")
     
-    # Ensure list-like columns are properly handled (NaN values filled with empty lists)
-    # and that individual elements within these lists are strings with spaces removed.
-    # Removing spaces from multi-word tags (e.g., "Science Fiction" -> "ScienceFiction")
-    # helps TF-IDF treat them as single tokens, which is often desired for genre/keyword matching.
     for col in ['genres', 'keywords', 'cast', 'crew']:
         movies_df_processed[col] = movies_df_processed[col].apply(
             lambda x: [str(item).replace(" ", "") for item in (x if isinstance(x, list) else []) if item is not None]
         )
 
-    # Fill any missing overviews with an empty string. This prevents errors when concatenating text.
     movies_df_processed['overview'] = movies_df_processed['overview'].fillna('')
 
-    # Combine all relevant features into a single list of strings per movie.
-    # Features are duplicated (`* 2`) to give them more weight during TF-IDF vectorization.
-    # The title is also added (lowercase, no spaces) to ensure direct title matches contribute.
     movies_df_processed['combined_tags_list'] = \
         movies_df_processed['genres'] * 2 + \
         movies_df_processed['keywords'] + \
@@ -240,48 +231,29 @@ if __name__ == "__main__":
         movies_df_processed['overview'].apply(lambda x: [str(x)] * 2) + \
         movies_df_processed['title'].apply(lambda x: [str(x).lower().replace(" ", "")])
 
-    # Convert the list of combined tags into a single space-separated string.
-    # All tags are converted to lowercase and leading/trailing spaces are stripped.
     movies_df_processed['tags'] = movies_df_processed['combined_tags_list'].apply(
         lambda x: " ".join([str(item) for item in x if item is not None])
     ).apply(lambda x: x.lower().strip())
 
-    # --- Data Cleaning: Remove movies with empty tags ---
-    # Movies without meaningful 'tags' (e.g., no overview, genres, cast, etc.) cannot be
-    # accurately used for similarity calculation. They are removed here.
-    initial_count = len(movies_df_processed)
-    movies_df_processed = movies_df_processed[movies_df_processed['tags'].str.strip() != ''].copy()
-    if len(movies_df_processed) < initial_count:
-        logging.warning(f"Removed {initial_count - len(movies_df_processed)} movies due to empty or missing 'tags' data.")
+    # Remove movies with empty tags
+    movies_df_processed = movies_df_processed[movies_df_processed['tags'].str.len() > 0]
     
-    # --- TF-IDF Vectorization and Cosine Similarity Calculation ---
-    logging.info("Generating TF-IDF matrix...")
-    # TF-IDF (Term Frequency-Inverse Document Frequency) converts text into numerical vectors.
-    # `stop_words='english'` removes common English words (like 'the', 'a', 'is') that don't
-    # contribute much to meaning.
-    # `min_df=5` ignores terms that appear in fewer than 5 documents. This helps remove rare
-    # or misspelled words that might be noise, focusing on more significant features.
-    tfidf = TfidfVectorizer(stop_words='english', min_df=5)
-    tfidf_matrix = tfidf.fit_transform(movies_df_processed['tags']) # Fit and transform the 'tags' column
-
-    logging.info("Calculating cosine similarity matrix...")
-    # Cosine similarity measures the cosine of the angle between two non-zero vectors.
-    # It determines how similar two documents (movies, in this case) are based on their TF-IDF vectors.
-    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-
-    # --- Save Processed Data ---
-    logging.info(f"Saving processed data (DataFrame and similarity matrix) to {OUTPUT_PKL_FILE}...")
-    try:
-        # Use pickle to serialize and save the DataFrame and similarity matrix as a tuple.
-        # This allows the backend to load them quickly without reprocessing.
-        with open(OUTPUT_PKL_FILE, 'wb') as file:
-            pickle.dump((movies_df_processed, cosine_sim), file)
-        logging.info("--- Data fetching, processing, and saving complete! ---")
-        logging.info(f"Successfully processed and saved data for {len(movies_df_processed)} movies to {OUTPUT_PKL_FILE}.")
-        logging.info("First 5 rows of the processed DataFrame (including new 'tags' field):")
-        logging.info(movies_df_processed.head(5).T) # Transpose for better readability in logs
-    except Exception as e:
-        logging.critical(f"ERROR: Could not save PKL file to {OUTPUT_PKL_FILE}: {e}")
-        exit(1) # Exit with an error code if saving fails
+    # Create TF-IDF vectors
+    vectorizer = TfidfVectorizer(max_features=5000)
+    tfidf_matrix = vectorizer.fit_transform(movies_df_processed['tags'])
+    
+    # Calculate similarity matrix
+    similarity_matrix = cosine_similarity(tfidf_matrix)
+    
+    # Save processed data
+    processed_data = {
+        'movies_df': movies_df_processed,
+        'similarity_matrix': similarity_matrix
+    }
+    
+    with open(OUTPUT_PKL_FILE, 'wb') as f:
+        pickle.dump(processed_data, f)
+    
+    logging.info(f"Successfully saved processed data to {OUTPUT_PKL_FILE}")
 
     logging.info("Data generation completed successfully!")
