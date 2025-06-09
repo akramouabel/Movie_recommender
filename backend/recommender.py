@@ -14,14 +14,15 @@ import time # Not directly used here, but may be useful for profiling
 import logging # For structured logging
 from difflib import get_close_matches # For fuzzy string matching
 import sys # Added for sys.exit()
-# --- New imports for embeddings and clustering ---
+# from sentence_transformers import SentenceTransformer # Removed: only needed for data generation
+# import torch # Removed: only needed for data generation
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Configuration for PKL file path and embeddings ---
+# --- Configuration for PKL file path and data components ---
 current_script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root_dir = os.path.abspath(os.path.join(current_script_dir, '..'))
 PKL_FILE_PATH = os.path.join(project_root_dir, 'data', 'movie_data_api.pkl')
@@ -68,10 +69,10 @@ def combined_similarity(idx1, idx2, embeddings, movies_df, w_text=0.6, w_genre=0
     year_sim = year_similarity(year1, year2)
     return w_text * text_sim + w_genre * genre_sim + w_year * year_sim
 
-# --- Embedding and Clustering Utilities ---
-def load_or_generate_embeddings():
+# --- Data Component Loading Utilities ---
+def load_embeddings():
     """
-    Loads movie embeddings from disk if available, otherwise generates and saves them.
+    Loads movie embeddings from disk.
     Returns a numpy array of embeddings.
     """
     global movie_embeddings
@@ -89,12 +90,12 @@ def load_or_generate_embeddings():
             sys.exit(1) # Exit if embeddings cannot be loaded
     else:
         logging.critical(f"CRITICAL: Embeddings file NOT FOUND at {EMBEDDINGS_FILE_PATH}. "
-                         "Ensure 'generate_data.py' was run successfully during the release phase.")
+                         "Ensure 'generate_data.py' was run successfully during the build phase.")
         sys.exit(1) # Exit if embeddings file is missing
 
-def load_or_generate_clusters(n_clusters=20):
+def load_clusters(n_clusters=20):
     """
-    Loads cluster assignments from disk if available, otherwise performs KMeans clustering and saves them.
+    Loads cluster assignments from disk.
     Returns a numpy array of cluster labels.
     """
     global movie_clusters
@@ -110,15 +111,14 @@ def load_or_generate_clusters(n_clusters=20):
             sys.exit(1) # Exit if clusters cannot be loaded
     else:
         logging.critical(f"CRITICAL: Clusters file NOT FOUND at {CLUSTERS_FILE_PATH}. "
-                         "Ensure 'generate_data.py' was run successfully during the release phase.")
+                         "Ensure 'generate_data.py' was run successfully during the build phase.")
         sys.exit(1) # Exit if clusters file is missing
 
 # --- Data Loading ---
 def load_recommendation_data():
     """
-    Loads the pre-processed movie DataFrame and cosine similarity matrix from a PKL file.
+    Loads the pre-processed movie DataFrame, embeddings, clusters, and similarity matrix from PKL and NPY files.
     Ensures the 'genres' column is properly parsed as lists.
-    Also loads/generates embeddings and clusters for recommendations.
     Returns True if successful, False otherwise.
     """
     global movies_df, cosine_sim, all_titles_for_suggestions
@@ -142,7 +142,7 @@ def load_recommendation_data():
             else:
                 logging.error(f"Unrecognized data format in PKL file: {type(data)}")
                 return False
-        # --- CRITICAL FIX/ASSUMPTION: Ensure 'genres' column contains actual lists ---
+        # Ensure 'genres' column contains actual lists (fix for data parsing inconsistencies)
         if 'genres' in movies_df.columns:
             # Apply ast.literal_eval only to those that are strings
             movies_df['genres'] = movies_df['genres'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
@@ -157,9 +157,9 @@ def load_recommendation_data():
             cosine_sim = None
             all_titles_for_suggestions = []
             return False
-        # --- Load or generate embeddings and clusters ---
-        load_or_generate_embeddings()
-        load_or_generate_clusters()
+        # --- Load pre-computed data components ---
+        load_embeddings()
+        load_clusters()
         logging.info("Recommendation data loading process completed successfully.")
         return True
     except Exception as e:
