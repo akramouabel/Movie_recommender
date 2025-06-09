@@ -1,2 +1,2 @@
 release: python generate_data.py
-web: gunicorn wsgi:app 
+web: gunicorn app:app 
