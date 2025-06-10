@@ -209,25 +209,7 @@ def get_movies():
 def get_movie(movie_id):
     try:
         if movie_data is None:
-            return jsonify({"error": "Movie data not loaded"}), 500
-            
-        movie = movie_data[movie_data['id'] == movie_id]
-        if movie.empty:
-            return jsonify({"error": "Movie not found"}), 404
-            
-        return jsonify(movie.iloc[0].to_dict())
-    except Exception as e:
-        logger.error(f"Error in get_movie: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/movie/details/<int:movie_id>', methods=['GET'])
-def get_movie_details(movie_id):
-    """
-    Returns comprehensive details for a specific movie by its ID.
-    """
-    try:
-        if movie_data is None:
-            logger.error("Movie data not loaded when /api/movie/details/<id> was requested.")
+            logger.error("Movie data not loaded when /api/movies/<id> was requested.")
             return jsonify({"error": "Movie data not loaded on backend."}), 500
             
         movie = movie_data[movie_data['id'] == movie_id]
@@ -270,32 +252,45 @@ def get_movie_details(movie_id):
 
         return jsonify(movie_details)
     except Exception as e:
-        logger.error(f"Error in get_movie_details for ID {movie_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error in get_movie for ID {movie_id}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/recommendations/<int:movie_id>', methods=['GET'])
 def get_recommendations(movie_id):
     try:
-        if movie_data is None or similarity_matrix is None:
-            return jsonify({"error": "Data not loaded"}), 500
+        if movie_data is None:
+            logger.error("Movie data not loaded when /api/recommendations/<id> was requested.")
+            return jsonify({"error": "Movie data not loaded on backend."}), 500
             
-        # Get the index of the movie
-        movie_idx = movie_data[movie_data['id'] == movie_id].index
-        if len(movie_idx) == 0:
+        # Get the movie title from the movie_id
+        movie_row = movie_data[movie_data['id'] == movie_id]
+        if movie_row.empty:
+            logger.info(f"Movie with ID {movie_id} not found for recommendations.")
             return jsonify({"error": "Movie not found"}), 404
-            
-        # Get similarity scores for the movie
-        movie_similarities = similarity_matrix[movie_idx[0]].toarray()[0]
-        
-        # Get indices of top similar movies
-        similar_indices = np.argsort(movie_similarities)[::-1][1:11]  # Top 10 similar movies
-        
-        # Get the similar movies data
-        similar_movies = movie_data.iloc[similar_indices].to_dict('records')
-        
-        return jsonify({"recommendations": similar_movies})
+
+        movie_title = movie_row.iloc[0]['title']
+        top_n = request.args.get('top_n', 10, type=int) # Allow top_n to be passed as a query parameter
+
+        # Call the main recommender function from recommender.py
+        # This will use the more robust multi-feature similarity and diversity logic
+        recommendations, matched_title = recommender.get_recommendations(
+            movie_title=movie_title,
+            num_recommendations=top_n
+            # min_year, max_year, and selected_genres could also be passed if desired for ID-based filtering
+        )
+
+        if recommendations is None:
+            logger.error(f"Recommender returned None for movie ID {movie_id} / title '{movie_title}': {matched_title}")
+            return jsonify({"error": matched_title}), 500
+        elif not recommendations:
+            logger.info(f"No recommendations found for movie ID {movie_id} / title '{movie_title}'. Message: {matched_title}")
+            return jsonify({"recommendations": [], "message": matched_title}), 200
+        else:
+            logger.info(f"Successfully retrieved {len(recommendations)} recommendations for movie ID {movie_id} / title '{movie_title}'.")
+            return jsonify({"recommendations": recommendations, "matched_title": matched_title}), 200
+
     except Exception as e:
-        logger.error(f"Error in get_recommendations: {str(e)}")
+        logger.error(f"Error in get_recommendations for ID {movie_id}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/search', methods=['GET'])
