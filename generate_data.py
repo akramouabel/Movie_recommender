@@ -107,9 +107,9 @@ def main():
     """Main function to generate movie data"""
     logging.info("Starting data generation process")
     
-    # Fetch movies from first 3 pages only to reduce time
+    # Fetch movies from first 150 pages (~3000 movies)
     all_movies = []
-    for page in range(1, 151): # Increased to fetch 150 pages for ~3000 movies
+    for page in range(1, 151): # Reverted to fetch 150 pages for ~3000 movies
         logging.info(f"Fetching page {page}")
         movies = fetch_movies(page)
         if not movies:
