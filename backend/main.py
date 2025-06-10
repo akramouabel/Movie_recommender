@@ -62,6 +62,20 @@ def load_data():
 # Load data when the application starts
 load_data()
 
+def convert_numpy_types(obj):
+    """Convert numpy types to Python native types for JSON serialization"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
+
 # --- API Routes ---
 
 @app.route('/')
@@ -120,6 +134,8 @@ def recommend_movie():
         logger.info(f"No recommendations found for '{movie_title}' with applied filters. Message: {matched_title}")
         return jsonify({"recommendations": [], "message": matched_title}), 200
     else:
+        # Convert numpy types to Python native types before JSON serialization
+        recommendations = convert_numpy_types(recommendations)
         logger.info(f"Successfully retrieved {len(recommendations)} recommendations for '{movie_title}'.")
         return jsonify({"recommendations": recommendations, "matched_title": matched_title}), 200
 
@@ -272,21 +288,22 @@ def get_recommendations(movie_id):
         top_n = request.args.get('top_n', 10, type=int) # Allow top_n to be passed as a query parameter
 
         # Call the main recommender function from recommender.py
-        # This will use the more robust multi-feature similarity and diversity logic
+        # The recommender.get_recommendations handles filtering by genres and years
         recommendations, matched_title = recommender.get_recommendations(
             movie_title=movie_title,
             num_recommendations=top_n
-            # min_year, max_year, and selected_genres could also be passed if desired for ID-based filtering
+            # No need to pass min_year, max_year, selected_genres here if they are not part of /api/recommendations/<id>
+            # If you want to add these filters, you would need to add them to the route and pass them here.
         )
-
+        
         if recommendations is None:
-            logger.error(f"Recommender returned None for movie ID {movie_id} / title '{movie_title}': {matched_title}")
+            logger.error(f"Recommender returned None for ID {movie_id} (title: {movie_title}): {matched_title}")
             return jsonify({"error": matched_title}), 500
         elif not recommendations:
-            logger.info(f"No recommendations found for movie ID {movie_id} / title '{movie_title}'. Message: {matched_title}")
+            logger.info(f"No recommendations found for ID {movie_id} (title: {movie_title}). Message: {matched_title}")
             return jsonify({"recommendations": [], "message": matched_title}), 200
         else:
-            logger.info(f"Successfully retrieved {len(recommendations)} recommendations for movie ID {movie_id} / title '{movie_title}'.")
+            logger.info(f"Successfully retrieved {len(recommendations)} recommendations for ID {movie_id} (title: {movie_title}).")
             return jsonify({"recommendations": recommendations, "matched_title": matched_title}), 200
 
     except Exception as e:
@@ -295,24 +312,21 @@ def get_recommendations(movie_id):
 
 @app.route('/api/search', methods=['GET'])
 def search_movies():
-    try:
-        if movie_data is None:
-            return jsonify({"error": "Movie data not loaded"}), 500
-            
-        query = request.args.get('query', '').lower()
-        if not query:
-            return jsonify({"movies": []}), 200
-            
-        # Search in titles
-        results = movie_data[movie_data['title'].str.lower().str.contains(query)]
+    query = request.args.get('query', '')
+    if not query:
+        return jsonify({'results': []}), 200
+    
+    if movie_data is None:
+        logger.error("Movie data not loaded when /api/search was requested.")
+        return jsonify({"error": "Movie data not loaded on backend."}), 500
         
-        # Convert to list of dictionaries
-        movies = results.to_dict('records')
-        
-        return jsonify({"movies": movies})
-    except Exception as e:
-        logger.error(f"Error in search_movies: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    search_results = movie_data[movie_data['title'].str.contains(query, case=False, na=False)]
+    
+    # Limit results to avoid overwhelming response
+    results_limited = search_results.head(20).to_dict('records') 
+    
+    logger.info(f"Search query: '{query}', found {len(results_limited)} results.")
+    return jsonify({'results': results_limited})
 
 # --- Log all registered routes for debugging and documentation ---
 logger.info("--- Flask URL Map (Registered Routes) ---")
