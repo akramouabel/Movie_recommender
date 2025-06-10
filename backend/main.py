@@ -15,6 +15,7 @@ import pickle
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import gc
+import ast
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -217,6 +218,59 @@ def get_movie(movie_id):
         return jsonify(movie.iloc[0].to_dict())
     except Exception as e:
         logger.error(f"Error in get_movie: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/movie/details/<int:movie_id>', methods=['GET'])
+def get_movie_details(movie_id):
+    """
+    Returns comprehensive details for a specific movie by its ID.
+    """
+    try:
+        if movie_data is None:
+            logger.error("Movie data not loaded when /api/movie/details/<id> was requested.")
+            return jsonify({"error": "Movie data not loaded on backend."}), 500
+            
+        movie = movie_data[movie_data['id'] == movie_id]
+        if movie.empty:
+            logger.info(f"Movie with ID {movie_id} not found.")
+            return jsonify({"error": "Movie not found"}), 404
+            
+        # Convert the single movie row (as a Series) to a dictionary
+        # Handle non-serializable types (e.g., numpy types) by converting to standard Python types
+        movie_details = movie.iloc[0].to_dict()
+
+        # Ensure genres is a list of strings
+        if 'genres' in movie_details and not isinstance(movie_details['genres'], list):
+            try:
+                movie_details['genres'] = ast.literal_eval(movie_details['genres']) # If it's a string representation of a list
+            except (ValueError, SyntaxError):
+                movie_details['genres'] = []
+        if not isinstance(movie_details.get('genres'), list):
+            movie_details['genres'] = []
+        movie_details['genres'] = [g.strip() for g in movie_details['genres'] if isinstance(g, str)]
+
+        # Ensure release_date is just the year or None
+        raw_release_date = movie_details.get('release_date')
+        if pd.notna(raw_release_date) and isinstance(raw_release_date, str):
+            try:
+                movie_details['release_date'] = str(pd.to_datetime(raw_release_date).year)
+            except (ValueError, TypeError):
+                movie_details['release_date'] = None
+        else:
+            movie_details['release_date'] = None
+
+        # Convert any numpy types to standard Python types for JSON serialization
+        for key, value in movie_details.items():
+            if isinstance(value, np.integer):
+                movie_details[key] = int(value)
+            elif isinstance(value, np.floating):
+                movie_details[key] = float(value)
+            elif isinstance(value, np.bool_):
+                movie_details[key] = bool(value)
+
+        return jsonify(movie_details)
+    except Exception as e:
+        logger.error(f"Error in get_movie_details for ID {movie_id}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/recommendations/<int:movie_id>', methods=['GET'])

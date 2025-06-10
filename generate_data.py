@@ -145,6 +145,15 @@ def main():
     logging.info("Creating DataFrame from processed movie data.")
     df = pd.DataFrame(processed_movies)
     
+    # --- NEW: Deduplicate movies by ID ---
+    initial_rows = len(df)
+    df.drop_duplicates(subset=['id'], keep='first', inplace=True)
+    if len(df) < initial_rows:
+        logging.warning(f"Removed {initial_rows - len(df)} duplicate movie IDs.")
+    else:
+        logging.info("No duplicate movie IDs found.")
+    # --- END NEW: Deduplicate movies by ID ---
+    
     # Create tags for TF-IDF
     logging.info("Generating TF-IDF tags.")
     df['tags'] = df.apply(lambda x: ' '.join([

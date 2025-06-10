@@ -208,6 +208,10 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
     except IndexError:
         logging.error(f"Error: Matched title '{exact_matched_title}' not found in DataFrame index after fuzzy match.")
         return [], "An internal error occurred while finding the movie for recommendations. Please try again."
+
+    # Define desired columns for the recommendation response
+    desired_columns = ['id', 'title', 'release_date', 'genres', 'overview', 'poster_path'] # Assuming these columns exist in movies_df
+
     # --- Multi-feature similarity with diversity ---
     similarities = []
     for idx in range(len(movies_df)):
@@ -237,41 +241,44 @@ def get_recommendations(movie_title, num_recommendations=10, min_year=None, max_
         sim = combined_similarity(movie_idx, idx, movie_embeddings, movies_df)
         similarities.append((idx, sim))
     similarities.sort(key=lambda x: x[1], reverse=True)
-    # --- Cluster-based diversity ---
+
+    # --- Cluster-based diversity and detailed recommendation formatting ---
     seen_clusters = set()
     filtered_recommendations = []
     recommended_movie_ids = set()
+
     for idx, sim in similarities:
         cluster = movie_clusters[idx]
         if cluster not in seen_clusters:
-            rec_movie = movies_df.iloc[idx]
-            if rec_movie['id'] not in recommended_movie_ids:
-                filtered_recommendations.append(rec_movie)
-                recommended_movie_ids.add(rec_movie['id'])
-                seen_clusters.add(cluster)
-        if len(filtered_recommendations) >= num_recommendations:
-            break
-    # If not enough diverse recommendations, fill up with top similar
-    if len(filtered_recommendations) < num_recommendations:
-        for idx, sim in similarities:
-            rec_movie = movies_df.iloc[idx]
-            if rec_movie['id'] not in recommended_movie_ids:
-                filtered_recommendations.append(rec_movie)
-                recommended_movie_ids.add(rec_movie['id'])
-            if len(filtered_recommendations) >= num_recommendations:
-                break
-    # --- 4. Format Output for Frontend ---
-    formatted_recommendations = []
-    for rec_movie in filtered_recommendations:
-        formatted_recommendations.append({
-            'movie_id': int(rec_movie.get('id', -1)),
-            'title': rec_movie.get('title', 'N/A'),
-            'overview': rec_movie.get('overview', 'N/A'),
-            'poster_path': rec_movie.get('poster_path'),
-            'release_date': rec_movie.get('release_date', 'N/A'),
-            'genres': [g.strip() for g in rec_movie.get('genres', []) if isinstance(g, str)],
-            'vote_average': float(rec_movie.get('vote_average', 0.0) or 0.0),
-            'vote_count': int(rec_movie.get('vote_count', 0) or 0),
-            'popularity': float(rec_movie.get('popularity', 0.0) or 0.0)
-        })
-    return formatted_recommendations, exact_matched_title
+            rec_movie_series = movies_df.iloc[idx] # This is a pandas Series representing the movie row
+            if rec_movie_series['id'] not in recommended_movie_ids:
+                # Construct a dictionary with specific details for the frontend
+                movie_details = {}
+                for col in desired_columns:
+                    movie_details[col] = rec_movie_series.get(col)
+
+                # Special handling for 'release_date' to ensure it's just the year
+                raw_release_date = movie_details.get('release_date')
+                if pd.notna(raw_release_date) and isinstance(raw_release_date, str):
+                    try:
+                        movie_details['release_date'] = str(pd.to_datetime(raw_release_date).year)
+                    except (ValueError, TypeError):
+                        movie_details['release_date'] = None # Or keep original string if it's already just the year or invalid
+                else:
+                    movie_details['release_date'] = None
+
+                # Ensure 'genres' is always a list, even if empty or initially not a list
+                if not isinstance(movie_details.get('genres'), list):
+                    movie_details['genres'] = []
+                else:
+                    # Clean up genres (strip whitespace, ensure all are strings)
+                    movie_details['genres'] = [g.strip() for g in movie_details['genres'] if isinstance(g, str)]
+
+                filtered_recommendations.append(movie_details)
+                recommended_movie_ids.add(rec_movie_series['id'])
+                seen_clusters.add(cluster) # Add to seen clusters here after processing movie
+
+                if len(filtered_recommendations) >= num_recommendations:
+                    break # Stop if we have enough recommendations
+
+    return filtered_recommendations, exact_matched_title
